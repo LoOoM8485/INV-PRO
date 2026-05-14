@@ -4,7 +4,7 @@ const TABLES = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15];
 const SEATS = [1, 2, 3, 5, 6, 7, 8, 9];
 const INV_IDS = Array.from({ length: 56 }, (_, i) => i * 2 + 1);
 const PRO_IDS = Array.from({ length: 56 }, (_, i) => i * 2 + 2);
-const STORAGE_KEY = "inv-pro-table-planner-responsive-v1";
+const STORAGE_KEY = "inv-pro-table-planner-v7";
 
 function getPairId(id) {
   return id % 2 === 1 ? id + 1 : id - 1;
@@ -75,9 +75,6 @@ function useScreenSize() {
 export default function App() {
   const [state, setState] = useState(loadSavedState);
   const screen = useScreenSize();
-
-  const isCompact = screen.width < 1050;
-  const isVerySmall = screen.width < 850;
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -354,54 +351,54 @@ export default function App() {
     }));
   }
 
-  const responsiveStyles = makeStyles({ isCompact, isVerySmall, screen });
+  const styles = makeStyles(screen);
 
   return (
-    <div style={responsiveStyles.page}>
-      <div style={responsiveStyles.app}>
-        <header style={responsiveStyles.header}>
-          <div style={responsiveStyles.logoBox}>
-            <img src="/logo.png" alt="Logo" style={responsiveStyles.logo} />
-            <h1 style={responsiveStyles.title}>INV / PRO TABLE PLANNER</h1>
+    <div style={styles.page}>
+      <div style={styles.app}>
+        <header style={styles.header}>
+          <div style={styles.logoBox}>
+            <img src="/logo.png" alt="Logo" style={styles.logo} />
+            <h1 style={styles.title}>INV / PRO TABLE PLANNER</h1>
           </div>
 
-          <div style={responsiveStyles.countBox}>
-            <button onClick={undoBreak} style={responsiveStyles.undoButton}>
-              UNDO
+          <div style={styles.countBox}>
+            <button onClick={undoBreak} style={styles.undoButton}>
+              UNDO BREAK
             </button>
 
-            <div style={responsiveStyles.countCardTotal}>
-              <div style={responsiveStyles.countLabel}>TOTAL</div>
-              <div style={responsiveStyles.countValue}>{livePlayers.length}</div>
+            <div style={styles.countCardTotal}>
+              <div style={styles.countLabel}>TOTAL</div>
+              <div style={styles.countValue}>{livePlayers.length}</div>
             </div>
 
-            <div style={responsiveStyles.countCardInv}>
-              <div style={responsiveStyles.countLabel}>INV</div>
-              <div style={responsiveStyles.countValue}>{invLive}</div>
+            <div style={styles.countCardInv}>
+              <div style={styles.countLabel}>INV</div>
+              <div style={styles.countValue}>{invLive}</div>
             </div>
 
-            <div style={responsiveStyles.countCardPro}>
-              <div style={responsiveStyles.countLabel}>PRO</div>
-              <div style={responsiveStyles.countValue}>{proLive}</div>
+            <div style={styles.countCardPro}>
+              <div style={styles.countLabel}>PRO</div>
+              <div style={styles.countValue}>{proLive}</div>
             </div>
 
-            <button onClick={breakTable} style={responsiveStyles.breakButton}>
+            <button onClick={breakTable} style={styles.breakButton}>
               BREAK {highestTableInPlay ? `T${highestTableInPlay}` : ""}
             </button>
           </div>
         </header>
 
-        <main style={responsiveStyles.mainGrid}>
-          <section style={responsiveStyles.tableOverview}>
-            <div style={responsiveStyles.overviewHeader}>
-              <h2 style={responsiveStyles.sectionTitle}>TABLES</h2>
+        <main style={styles.mainGrid}>
+          <section style={styles.tableOverview}>
+            <div style={styles.overviewHeader}>
+              <h2 style={styles.sectionTitle}>TABLES</h2>
 
-              <label style={responsiveStyles.overviewLabel}>
+              <label style={styles.overviewLabel}>
                 SHOW
                 <select
                   value={state.visibleMaxTable}
                   onChange={(e) => changeVisibleMaxTable(Number(e.target.value))}
-                  style={responsiveStyles.overviewSelect}
+                  style={styles.overviewSelect}
                 >
                   {TABLES.map((table) => (
                     <option key={table} value={table}>
@@ -412,19 +409,19 @@ export default function App() {
               </label>
             </div>
 
-            <div style={responsiveStyles.tablesGrid}>
+            <div style={styles.tablesGrid}>
               {visibleTables.map((table) => (
                 <TableCard
                   key={table}
                   table={table}
                   allPlayers={allPlayers}
-                  styles={responsiveStyles}
+                  styles={styles}
                 />
               ))}
             </div>
           </section>
 
-          <section style={responsiveStyles.invListWrapper}>
+          <section style={styles.listWrapper}>
             <PlayerList
               title="INV"
               players={state.inv}
@@ -434,11 +431,11 @@ export default function App() {
               toggleEliminated={toggleEliminated}
               getUnavailableTableForPlayer={getUnavailableTableForPlayer}
               getAvailableSeatsForPlayer={getAvailableSeatsForPlayer}
-              styles={responsiveStyles}
+              styles={styles}
             />
           </section>
 
-          <section style={responsiveStyles.proListWrapper}>
+          <section style={styles.listWrapper}>
             <PlayerList
               title="PRO"
               players={state.pro}
@@ -448,7 +445,7 @@ export default function App() {
               toggleEliminated={toggleEliminated}
               getUnavailableTableForPlayer={getUnavailableTableForPlayer}
               getAvailableSeatsForPlayer={getAvailableSeatsForPlayer}
-              styles={responsiveStyles}
+              styles={styles}
             />
           </section>
         </main>
@@ -598,15 +595,15 @@ function PlayerList({
   );
 }
 
-function makeStyles({ isCompact, isVerySmall, screen }) {
-  const headerHeight = isVerySmall ? 92 : 105;
-  const workingHeight = Math.max(420, screen.height - headerHeight - 24);
+function makeStyles(screen) {
+  const overviewWidth = Math.max(120, Math.min(190, Math.round(screen.width * 0.15)));
+  const workingHeight = Math.max(430, screen.height - 112);
 
   return {
     page: {
       height: "100vh",
       background: "#e5e7eb",
-      padding: isVerySmall ? 4 : 6,
+      padding: 6,
       boxSizing: "border-box",
       fontFamily: "Arial, Helvetica, sans-serif",
       overflow: "hidden",
@@ -618,7 +615,7 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
       margin: "0 auto",
       background: "white",
       borderRadius: 12,
-      padding: isVerySmall ? 5 : 8,
+      padding: 8,
       boxSizing: "border-box",
       boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
       overflow: "hidden",
@@ -626,8 +623,8 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
 
     header: {
       display: "grid",
-      gridTemplateColumns: isVerySmall ? "1fr" : "1fr auto",
-      gap: isVerySmall ? 4 : 8,
+      gridTemplateColumns: "1fr auto",
+      gap: 8,
       alignItems: "center",
       marginBottom: 6,
     },
@@ -637,14 +634,14 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
     },
 
     logo: {
-      height: isVerySmall ? 38 : 52,
-      maxWidth: isVerySmall ? 150 : 210,
+      height: 52,
+      maxWidth: 210,
       objectFit: "contain",
     },
 
     title: {
       margin: 0,
-      fontSize: isVerySmall ? 13 : 17,
+      fontSize: 17,
       fontWeight: 900,
       color: "#111827",
     },
@@ -652,7 +649,7 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
     countBox: {
       display: "flex",
       alignItems: "center",
-      justifyContent: isVerySmall ? "center" : "flex-end",
+      justifyContent: "flex-end",
       gap: 5,
       flexWrap: "wrap",
     },
@@ -660,7 +657,7 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
     countCardTotal: {
       border: "2px solid #111827",
       borderRadius: 8,
-      minWidth: isVerySmall ? 48 : 58,
+      minWidth: 58,
       padding: 3,
       textAlign: "center",
       background: "#f8fafc",
@@ -669,7 +666,7 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
     countCardInv: {
       border: "2px solid #d6b94c",
       borderRadius: 8,
-      minWidth: isVerySmall ? 48 : 58,
+      minWidth: 58,
       padding: 3,
       textAlign: "center",
       background: "#fef3c7",
@@ -678,7 +675,7 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
     countCardPro: {
       border: "2px solid #93c5fd",
       borderRadius: 8,
-      minWidth: isVerySmall ? 48 : 58,
+      minWidth: 58,
       padding: 3,
       textAlign: "center",
       background: "#dbeafe",
@@ -691,7 +688,7 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
     },
 
     countValue: {
-      fontSize: isVerySmall ? 15 : 19,
+      fontSize: 19,
       fontWeight: 900,
       color: "#111827",
     },
@@ -702,8 +699,8 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
       color: "white",
       fontWeight: 900,
       borderRadius: 8,
-      padding: isVerySmall ? "7px 7px" : "9px 10px",
-      fontSize: isVerySmall ? 10 : 12,
+      padding: "9px 10px",
+      fontSize: 12,
       cursor: "pointer",
     },
 
@@ -713,18 +710,16 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
       color: "white",
       fontWeight: 900,
       borderRadius: 8,
-      padding: isVerySmall ? "7px 7px" : "9px 10px",
-      fontSize: isVerySmall ? 10 : 12,
+      padding: "9px 10px",
+      fontSize: 12,
       cursor: "pointer",
     },
 
     mainGrid: {
       height: workingHeight,
       display: "grid",
-      gridTemplateColumns: isCompact
-        ? "150px minmax(260px, 1fr) minmax(260px, 1fr)"
-        : "180px minmax(320px, 1fr) minmax(320px, 1fr)",
-      gap: isVerySmall ? 5 : 8,
+      gridTemplateColumns: `${overviewWidth}px minmax(380px, 1fr) minmax(380px, 1fr)`,
+      gap: 8,
       alignItems: "start",
       overflow: "hidden",
     },
@@ -739,12 +734,7 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
       overflowY: "auto",
     },
 
-    invListWrapper: {
-      height: "100%",
-      overflow: "hidden",
-    },
-
-    proListWrapper: {
+    listWrapper: {
       height: "100%",
       overflow: "hidden",
     },
@@ -784,7 +774,7 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
     sectionTitle: {
       margin: 0,
       textAlign: "center",
-      fontSize: isVerySmall ? 11 : 13,
+      fontSize: 13,
       fontWeight: 900,
       color: "#111827",
     },
@@ -855,11 +845,11 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
     },
 
     seatId: {
-      minHeight: isVerySmall ? 13 : 15,
+      minHeight: 14,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      fontSize: isVerySmall ? 8 : 9,
+      fontSize: 9,
       fontWeight: 900,
       color: "#111827",
     },
@@ -891,9 +881,7 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
 
     playerHeader: {
       display: "grid",
-      gridTemplateColumns: isVerySmall
-        ? "34px 42px 1fr 1fr 32px"
-        : "40px 48px 1fr 1fr 38px",
+      gridTemplateColumns: "40px 48px 1fr 1fr 38px",
       gap: 3,
       background: "#334155",
       color: "white",
@@ -908,9 +896,7 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
 
     playerRow: {
       display: "grid",
-      gridTemplateColumns: isVerySmall
-        ? "34px 42px 1fr 1fr 32px"
-        : "40px 48px 1fr 1fr 38px",
+      gridTemplateColumns: "40px 48px 1fr 1fr 38px",
       gap: 3,
       background: "#cbd5e1",
       padding: 3,
@@ -927,7 +913,7 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
       background: "white",
       borderRadius: 5,
       textAlign: "center",
-      fontSize: isVerySmall ? 11 : 13,
+      fontSize: 13,
       fontWeight: 900,
       padding: "4px 0",
     },
@@ -936,7 +922,7 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
       background: "white",
       borderRadius: 5,
       textAlign: "center",
-      fontSize: isVerySmall ? 9 : 11,
+      fontSize: 11,
       fontWeight: 900,
       padding: "4px 0",
     },
@@ -954,7 +940,7 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
 
     tableSelect: {
       width: "100%",
-      minHeight: isVerySmall ? 24 : 26,
+      minHeight: 26,
       borderRadius: 5,
       border: "1px solid #94a3b8",
       background: "white",
@@ -965,7 +951,7 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
 
     seatSelect: {
       width: "100%",
-      minHeight: isVerySmall ? 24 : 26,
+      minHeight: 26,
       borderRadius: 5,
       border: "1px solid #d6b94c",
       background: "#fef3c7",
@@ -975,8 +961,8 @@ function makeStyles({ isCompact, isVerySmall, screen }) {
     },
 
     checkbox: {
-      width: isVerySmall ? 18 : 22,
-      height: isVerySmall ? 18 : 22,
+      width: 22,
+      height: 22,
       margin: "0 auto",
     },
   };
