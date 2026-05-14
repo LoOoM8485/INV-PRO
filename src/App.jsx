@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useState } from "react";
 
 const TABLES = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15];
 const SEATS = [1, 2, 3, 5, 6, 7, 8, 9];
+
 const INV_IDS = Array.from({ length: 56 }, (_, i) => i * 2 + 1);
 const PRO_IDS = Array.from({ length: 56 }, (_, i) => i * 2 + 2);
-const STORAGE_KEY = "inv-pro-table-planner-v7";
+
+const STORAGE_KEY = "inv-pro-table-planner-v10";
 
 function getPairId(id) {
   return id % 2 === 1 ? id + 1 : id - 1;
@@ -329,7 +331,9 @@ export default function App() {
     });
 
     if (!assignments) {
-      alert(`Cannot break Table ${highestTableInPlay}. Not enough legal seats available.`);
+      alert(
+        `Cannot break Table ${highestTableInPlay}. Not enough legal seats available.`
+      );
       return;
     }
 
@@ -421,32 +425,34 @@ export default function App() {
             </div>
           </section>
 
-          <section style={styles.listWrapper}>
-            <PlayerList
-              title="INV"
-              players={state.inv}
-              allowedTables={visibleTables}
-              updateTable={setPlayerTable}
-              updateSeat={setPlayerSeat}
-              toggleEliminated={toggleEliminated}
-              getUnavailableTableForPlayer={getUnavailableTableForPlayer}
-              getAvailableSeatsForPlayer={getAvailableSeatsForPlayer}
-              styles={styles}
-            />
-          </section>
+          <section style={styles.playerLists}>
+            <div style={styles.sharedScrollArea}>
+              <div style={styles.playerListsInner}>
+                <PlayerList
+                  title="INV"
+                  players={state.inv}
+                  allowedTables={visibleTables}
+                  updateTable={setPlayerTable}
+                  updateSeat={setPlayerSeat}
+                  toggleEliminated={toggleEliminated}
+                  getUnavailableTableForPlayer={getUnavailableTableForPlayer}
+                  getAvailableSeatsForPlayer={getAvailableSeatsForPlayer}
+                  styles={styles}
+                />
 
-          <section style={styles.listWrapper}>
-            <PlayerList
-              title="PRO"
-              players={state.pro}
-              allowedTables={visibleTables}
-              updateTable={setPlayerTable}
-              updateSeat={setPlayerSeat}
-              toggleEliminated={toggleEliminated}
-              getUnavailableTableForPlayer={getUnavailableTableForPlayer}
-              getAvailableSeatsForPlayer={getAvailableSeatsForPlayer}
-              styles={styles}
-            />
+                <PlayerList
+                  title="PRO"
+                  players={state.pro}
+                  allowedTables={visibleTables}
+                  updateTable={setPlayerTable}
+                  updateSeat={setPlayerSeat}
+                  toggleEliminated={toggleEliminated}
+                  getUnavailableTableForPlayer={getUnavailableTableForPlayer}
+                  getAvailableSeatsForPlayer={getAvailableSeatsForPlayer}
+                  styles={styles}
+                />
+              </div>
+            </div>
           </section>
         </main>
       </div>
@@ -526,122 +532,122 @@ function PlayerList({
         <div>OUT</div>
       </div>
 
-      <div style={styles.listScroll}>
-        {players.map((player) => {
-          const blockedTable = getUnavailableTableForPlayer(player.id);
-          const availableSeats = getAvailableSeatsForPlayer(player);
+      {players.map((player) => {
+        const blockedTable = getUnavailableTableForPlayer(player.id);
+        const availableSeats = getAvailableSeatsForPlayer(player);
 
-          const tableOptions = allowedTables.filter(
-            (table) => Number(table) !== Number(blockedTable)
-          );
+        const tableOptions = allowedTables.filter(
+          (table) => Number(table) !== Number(blockedTable)
+        );
 
-          return (
-            <div
-              key={player.id}
-              style={{
-                ...styles.playerRow,
-                ...(player.eliminated ? styles.eliminatedRow : {}),
-              }}
-            >
-              <div style={styles.idCell}>{player.id}</div>
+        return (
+          <div
+            key={player.id}
+            style={{
+              ...styles.playerRow,
+              ...(player.eliminated ? styles.eliminatedRow : {}),
+            }}
+          >
+            <div style={styles.idCell}>{player.id}</div>
 
-              <div style={styles.noCell}>
-                {blockedTable ? (
-                  <span style={styles.blockedTable}>T {blockedTable}</span>
-                ) : (
-                  <span style={styles.okTable}>OK</span>
-                )}
-              </div>
-
-              <select
-                value={player.table}
-                disabled={player.eliminated}
-                onChange={(e) => updateTable(title, player.id, e.target.value)}
-                style={styles.tableSelect}
-              >
-                <option value="">-</option>
-                {tableOptions.map((table) => (
-                  <option key={table} value={table}>
-                    {table}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={player.seat}
-                disabled={player.eliminated || !player.table}
-                onChange={(e) => updateSeat(title, player.id, e.target.value)}
-                style={styles.seatSelect}
-              >
-                <option value="">-</option>
-                {availableSeats.map((seat) => (
-                  <option key={seat} value={seat}>
-                    {seat}
-                  </option>
-                ))}
-              </select>
-
-              <input
-                type="checkbox"
-                checked={player.eliminated}
-                onChange={() => toggleEliminated(title, player.id)}
-                style={styles.checkbox}
-              />
+            <div style={styles.noCell}>
+              {blockedTable ? (
+                <span style={styles.blockedTable}>T {blockedTable}</span>
+              ) : (
+                <span style={styles.okTable}>OK</span>
+              )}
             </div>
-          );
-        })}
-      </div>
+
+            <select
+              value={player.table}
+              disabled={player.eliminated}
+              onChange={(e) => updateTable(title, player.id, e.target.value)}
+              style={styles.tableSelect}
+            >
+              <option value="">-</option>
+
+              {tableOptions.map((table) => (
+                <option key={table} value={table}>
+                  {table}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={player.seat}
+              disabled={player.eliminated || !player.table}
+              onChange={(e) => updateSeat(title, player.id, e.target.value)}
+              style={styles.seatSelect}
+            >
+              <option value="">-</option>
+
+              {availableSeats.map((seat) => (
+                <option key={seat} value={seat}>
+                  {seat}
+                </option>
+              ))}
+            </select>
+
+            <input
+              type="checkbox"
+              checked={player.eliminated}
+              onChange={() => toggleEliminated(title, player.id)}
+              style={styles.checkbox}
+            />
+          </div>
+        );
+      })}
     </section>
   );
 }
 
 function makeStyles(screen) {
-  const overviewWidth = Math.max(120, Math.min(190, Math.round(screen.width * 0.15)));
-  const workingHeight = Math.max(430, screen.height - 112);
+  const overviewWidth = Math.max(170, Math.min(300, Math.round(screen.width * 0.24)));
+  const listsWidth = 540;
 
   return {
     page: {
-      height: "100vh",
+      minHeight: "100vh",
       background: "#e5e7eb",
       padding: 6,
       boxSizing: "border-box",
       fontFamily: "Arial, Helvetica, sans-serif",
-      overflow: "hidden",
+      overflowX: "auto",
     },
 
     app: {
-      height: "100%",
-      width: "100%",
+      width: overviewWidth + listsWidth + 34,
+      minWidth: overviewWidth + listsWidth + 34,
+      maxWidth: "none",
       margin: "0 auto",
       background: "white",
       borderRadius: 12,
       padding: 8,
-      boxSizing: "border-box",
       boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
-      overflow: "hidden",
     },
 
     header: {
-      display: "grid",
-      gridTemplateColumns: "1fr auto",
-      gap: 8,
+      display: "flex",
+      justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 6,
+      gap: 8,
+      marginBottom: 8,
     },
 
     logoBox: {
       textAlign: "center",
+      flex: 1,
     },
 
     logo: {
-      height: 52,
-      maxWidth: 210,
+      height: 54,
+      maxWidth: 190,
       objectFit: "contain",
     },
 
     title: {
       margin: 0,
-      fontSize: 17,
+      fontSize: 16,
       fontWeight: 900,
       color: "#111827",
     },
@@ -649,15 +655,13 @@ function makeStyles(screen) {
     countBox: {
       display: "flex",
       alignItems: "center",
-      justifyContent: "flex-end",
       gap: 5,
-      flexWrap: "wrap",
     },
 
     countCardTotal: {
       border: "2px solid #111827",
       borderRadius: 8,
-      minWidth: 58,
+      minWidth: 48,
       padding: 3,
       textAlign: "center",
       background: "#f8fafc",
@@ -666,7 +670,7 @@ function makeStyles(screen) {
     countCardInv: {
       border: "2px solid #d6b94c",
       borderRadius: 8,
-      minWidth: 58,
+      minWidth: 48,
       padding: 3,
       textAlign: "center",
       background: "#fef3c7",
@@ -675,7 +679,7 @@ function makeStyles(screen) {
     countCardPro: {
       border: "2px solid #93c5fd",
       borderRadius: 8,
-      minWidth: 58,
+      minWidth: 48,
       padding: 3,
       textAlign: "center",
       background: "#dbeafe",
@@ -688,7 +692,7 @@ function makeStyles(screen) {
     },
 
     countValue: {
-      fontSize: 19,
+      fontSize: 17,
       fontWeight: 900,
       color: "#111827",
     },
@@ -699,8 +703,8 @@ function makeStyles(screen) {
       color: "white",
       fontWeight: 900,
       borderRadius: 8,
-      padding: "9px 10px",
-      fontSize: 12,
+      padding: "8px 8px",
+      fontSize: 11,
       cursor: "pointer",
     },
 
@@ -710,33 +714,27 @@ function makeStyles(screen) {
       color: "white",
       fontWeight: 900,
       borderRadius: 8,
-      padding: "9px 10px",
-      fontSize: 12,
+      padding: "8px 8px",
+      fontSize: 11,
       cursor: "pointer",
     },
 
     mainGrid: {
-      height: workingHeight,
       display: "grid",
-      gridTemplateColumns: `${overviewWidth}px minmax(380px, 1fr) minmax(380px, 1fr)`,
+      gridTemplateColumns: `${overviewWidth}px ${listsWidth}px`,
       gap: 8,
       alignItems: "start",
-      overflow: "hidden",
     },
 
     tableOverview: {
-      height: "100%",
       border: "2px solid #111827",
       borderRadius: 10,
-      padding: 4,
+      padding: 5,
       background: "#f8fafc",
+      width: overviewWidth,
       boxSizing: "border-box",
+      maxHeight: "calc(100vh - 110px)",
       overflowY: "auto",
-    },
-
-    listWrapper: {
-      height: "100%",
-      overflow: "hidden",
     },
 
     overviewHeader: {
@@ -771,10 +769,28 @@ function makeStyles(screen) {
       width: 48,
     },
 
+    playerLists: {
+      width: listsWidth,
+      minHeight: 0,
+    },
+
+    sharedScrollArea: {
+      maxHeight: "calc(100vh - 110px)",
+      overflowY: "auto",
+      borderRadius: 10,
+    },
+
+    playerListsInner: {
+      display: "grid",
+      gridTemplateColumns: "266px 266px",
+      gap: 8,
+      alignItems: "start",
+    },
+
     sectionTitle: {
       margin: 0,
       textAlign: "center",
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: 900,
       color: "#111827",
     },
@@ -863,45 +879,39 @@ function makeStyles(screen) {
     },
 
     listCard: {
-      height: "100%",
       border: "2px solid #111827",
       borderRadius: 10,
-      padding: 5,
+      padding: 4,
       background: "#f8fafc",
+      width: 266,
       boxSizing: "border-box",
-      display: "flex",
-      flexDirection: "column",
-      overflow: "hidden",
-    },
-
-    listScroll: {
-      overflowY: "auto",
-      paddingRight: 2,
     },
 
     playerHeader: {
       display: "grid",
-      gridTemplateColumns: "40px 48px 1fr 1fr 38px",
-      gap: 3,
+      gridTemplateColumns: "32px 42px 58px 58px 30px",
+      gap: 2,
       background: "#334155",
       color: "white",
-      fontSize: 10,
+      fontSize: 9,
       fontWeight: 900,
       textAlign: "center",
-      padding: 3,
-      borderRadius: 6,
-      marginBottom: 3,
-      flexShrink: 0,
+      padding: 2,
+      borderRadius: 5,
+      marginBottom: 2,
+      position: "sticky",
+      top: 0,
+      zIndex: 3,
     },
 
     playerRow: {
       display: "grid",
-      gridTemplateColumns: "40px 48px 1fr 1fr 38px",
-      gap: 3,
+      gridTemplateColumns: "32px 42px 58px 58px 30px",
+      gap: 2,
       background: "#cbd5e1",
-      padding: 3,
-      borderRadius: 6,
-      marginBottom: 3,
+      padding: 2,
+      borderRadius: 5,
+      marginBottom: 2,
       alignItems: "center",
     },
 
@@ -911,27 +921,27 @@ function makeStyles(screen) {
 
     idCell: {
       background: "white",
-      borderRadius: 5,
+      borderRadius: 4,
       textAlign: "center",
-      fontSize: 13,
+      fontSize: 11,
       fontWeight: 900,
-      padding: "4px 0",
+      padding: "3px 0",
     },
 
     noCell: {
       background: "white",
-      borderRadius: 5,
+      borderRadius: 4,
       textAlign: "center",
-      fontSize: 11,
+      fontSize: 9,
       fontWeight: 900,
-      padding: "4px 0",
+      padding: "3px 0",
     },
 
     blockedTable: {
       background: "#ef4444",
       color: "white",
-      padding: "2px 5px",
-      borderRadius: 5,
+      padding: "1px 3px",
+      borderRadius: 4,
     },
 
     okTable: {
@@ -940,29 +950,31 @@ function makeStyles(screen) {
 
     tableSelect: {
       width: "100%",
-      minHeight: 26,
-      borderRadius: 5,
+      minHeight: 22,
+      borderRadius: 4,
       border: "1px solid #94a3b8",
       background: "white",
       color: "#000",
       fontWeight: 900,
       textAlign: "center",
+      fontSize: 11,
     },
 
     seatSelect: {
       width: "100%",
-      minHeight: 26,
-      borderRadius: 5,
+      minHeight: 22,
+      borderRadius: 4,
       border: "1px solid #d6b94c",
       background: "#fef3c7",
       color: "#000",
       fontWeight: 900,
       textAlign: "center",
+      fontSize: 11,
     },
 
     checkbox: {
-      width: 22,
-      height: 22,
+      width: 18,
+      height: 18,
       margin: "0 auto",
     },
   };
