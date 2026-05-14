@@ -2,11 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 
 const TABLES = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15];
 const SEATS = [1, 2, 3, 5, 6, 7, 8, 9];
-
 const INV_IDS = Array.from({ length: 56 }, (_, i) => i * 2 + 1);
 const PRO_IDS = Array.from({ length: 56 }, (_, i) => i * 2 + 2);
-
-const STORAGE_KEY = "inv-pro-table-planner-v5";
+const STORAGE_KEY = "inv-pro-table-planner-responsive-v1";
 
 function getPairId(id) {
   return id % 2 === 1 ? id + 1 : id - 1;
@@ -52,8 +50,34 @@ function cryptoShuffle(items) {
   return array;
 }
 
+function useScreenSize() {
+  const [size, setSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+
+  useEffect(() => {
+    const update = () =>
+      setSize({ width: window.innerWidth, height: window.innerHeight });
+
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+    };
+  }, []);
+
+  return size;
+}
+
 export default function App() {
   const [state, setState] = useState(loadSavedState);
+  const screen = useScreenSize();
+
+  const isCompact = screen.width < 1050;
+  const isVerySmall = screen.width < 850;
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -105,6 +129,7 @@ export default function App() {
   function updatePlayer(type, id, patch) {
     setState((current) => {
       const key = type === "INV" ? "inv" : "pro";
+
       return {
         ...current,
         [key]: current[key].map((player) =>
@@ -115,11 +140,18 @@ export default function App() {
   }
 
   function setPlayerTable(type, id, table) {
-    updatePlayer(type, id, { table, seat: "", eliminated: false });
+    updatePlayer(type, id, {
+      table,
+      seat: "",
+      eliminated: false,
+    });
   }
 
   function setPlayerSeat(type, id, seat) {
-    updatePlayer(type, id, { seat, eliminated: false });
+    updatePlayer(type, id, {
+      seat,
+      eliminated: false,
+    });
   }
 
   function toggleEliminated(type, id) {
@@ -270,11 +302,7 @@ export default function App() {
       return;
     }
 
-    if (
-      !window.confirm(
-        `Do you really want to break Table ${highestTableInPlay}?`
-      )
-    ) {
+    if (!window.confirm(`Do you really want to break Table ${highestTableInPlay}?`)) {
       return;
     }
 
@@ -304,9 +332,7 @@ export default function App() {
     });
 
     if (!assignments) {
-      alert(
-        `Cannot break Table ${highestTableInPlay}. Not enough legal seats available.`
-      );
+      alert(`Cannot break Table ${highestTableInPlay}. Not enough legal seats available.`);
       return;
     }
 
@@ -328,54 +354,54 @@ export default function App() {
     }));
   }
 
+  const responsiveStyles = makeStyles({ isCompact, isVerySmall, screen });
+
   return (
-    <div style={styles.page}>
-      <div style={styles.app}>
-        <header style={styles.header}>
-          <div style={styles.logoBox}>
-            <img src="/logo.png" alt="Triton Poker" style={styles.logo} />
-            <h1 style={styles.title}>INV / PRO TABLE PLANNER</h1>
+    <div style={responsiveStyles.page}>
+      <div style={responsiveStyles.app}>
+        <header style={responsiveStyles.header}>
+          <div style={responsiveStyles.logoBox}>
+            <img src="/logo.png" alt="Logo" style={responsiveStyles.logo} />
+            <h1 style={responsiveStyles.title}>INV / PRO TABLE PLANNER</h1>
           </div>
 
-          <div style={styles.countBox}>
-            <button onClick={undoBreak} style={styles.undoButton}>
-              UNDO BREAK
+          <div style={responsiveStyles.countBox}>
+            <button onClick={undoBreak} style={responsiveStyles.undoButton}>
+              UNDO
             </button>
 
-            <div style={styles.countCardTotal}>
-              <div style={styles.countLabel}>TOTAL</div>
-              <div style={styles.countValue}>{livePlayers.length}</div>
+            <div style={responsiveStyles.countCardTotal}>
+              <div style={responsiveStyles.countLabel}>TOTAL</div>
+              <div style={responsiveStyles.countValue}>{livePlayers.length}</div>
             </div>
 
-            <div style={styles.countCardInv}>
-              <div style={styles.countLabel}>INV</div>
-              <div style={styles.countValue}>{invLive}</div>
+            <div style={responsiveStyles.countCardInv}>
+              <div style={responsiveStyles.countLabel}>INV</div>
+              <div style={responsiveStyles.countValue}>{invLive}</div>
             </div>
 
-            <div style={styles.countCardPro}>
-              <div style={styles.countLabel}>PRO</div>
-              <div style={styles.countValue}>{proLive}</div>
+            <div style={responsiveStyles.countCardPro}>
+              <div style={responsiveStyles.countLabel}>PRO</div>
+              <div style={responsiveStyles.countValue}>{proLive}</div>
             </div>
 
-            <button onClick={breakTable} style={styles.breakButton}>
+            <button onClick={breakTable} style={responsiveStyles.breakButton}>
               BREAK {highestTableInPlay ? `T${highestTableInPlay}` : ""}
             </button>
           </div>
         </header>
 
-        <main style={styles.mainGrid}>
-          <section style={styles.tableOverview}>
-            <div style={styles.overviewHeader}>
-              <h2 style={styles.sectionTitle}>TABLE OVERVIEW</h2>
+        <main style={responsiveStyles.mainGrid}>
+          <section style={responsiveStyles.tableOverview}>
+            <div style={responsiveStyles.overviewHeader}>
+              <h2 style={responsiveStyles.sectionTitle}>TABLES</h2>
 
-              <label style={styles.overviewLabel}>
-                SHOW UP TO TABLE
+              <label style={responsiveStyles.overviewLabel}>
+                SHOW
                 <select
                   value={state.visibleMaxTable}
-                  onChange={(e) =>
-                    changeVisibleMaxTable(Number(e.target.value))
-                  }
-                  style={styles.overviewSelect}
+                  onChange={(e) => changeVisibleMaxTable(Number(e.target.value))}
+                  style={responsiveStyles.overviewSelect}
                 >
                   {TABLES.map((table) => (
                     <option key={table} value={table}>
@@ -386,39 +412,44 @@ export default function App() {
               </label>
             </div>
 
-            <div style={styles.tablesGrid}>
+            <div style={responsiveStyles.tablesGrid}>
               {visibleTables.map((table) => (
-                <TableCard key={table} table={table} allPlayers={allPlayers} />
+                <TableCard
+                  key={table}
+                  table={table}
+                  allPlayers={allPlayers}
+                  styles={responsiveStyles}
+                />
               ))}
             </div>
           </section>
 
-          <section style={styles.playerLists}>
-            <div style={styles.sharedScrollArea}>
-              <div style={styles.playerListsInner}>
-                <PlayerList
-                  title="INV"
-                  players={state.inv}
-                  allowedTables={visibleTables}
-                  updateTable={setPlayerTable}
-                  updateSeat={setPlayerSeat}
-                  toggleEliminated={toggleEliminated}
-                  getUnavailableTableForPlayer={getUnavailableTableForPlayer}
-                  getAvailableSeatsForPlayer={getAvailableSeatsForPlayer}
-                />
+          <section style={responsiveStyles.invListWrapper}>
+            <PlayerList
+              title="INV"
+              players={state.inv}
+              allowedTables={visibleTables}
+              updateTable={setPlayerTable}
+              updateSeat={setPlayerSeat}
+              toggleEliminated={toggleEliminated}
+              getUnavailableTableForPlayer={getUnavailableTableForPlayer}
+              getAvailableSeatsForPlayer={getAvailableSeatsForPlayer}
+              styles={responsiveStyles}
+            />
+          </section>
 
-                <PlayerList
-                  title="PRO"
-                  players={state.pro}
-                  allowedTables={visibleTables}
-                  updateTable={setPlayerTable}
-                  updateSeat={setPlayerSeat}
-                  toggleEliminated={toggleEliminated}
-                  getUnavailableTableForPlayer={getUnavailableTableForPlayer}
-                  getAvailableSeatsForPlayer={getAvailableSeatsForPlayer}
-                />
-              </div>
-            </div>
+          <section style={responsiveStyles.proListWrapper}>
+            <PlayerList
+              title="PRO"
+              players={state.pro}
+              allowedTables={visibleTables}
+              updateTable={setPlayerTable}
+              updateSeat={setPlayerSeat}
+              toggleEliminated={toggleEliminated}
+              getUnavailableTableForPlayer={getUnavailableTableForPlayer}
+              getAvailableSeatsForPlayer={getAvailableSeatsForPlayer}
+              styles={responsiveStyles}
+            />
           </section>
         </main>
       </div>
@@ -426,7 +457,7 @@ export default function App() {
   );
 }
 
-function TableCard({ table, allPlayers }) {
+function TableCard({ table, allPlayers, styles }) {
   const seats = SEATS.map((seat) => {
     const player = allPlayers.find(
       (p) =>
@@ -440,7 +471,7 @@ function TableCard({ table, allPlayers }) {
 
   return (
     <div style={styles.tableCard}>
-      <div style={styles.tableCardTitle}>TABLE {table}</div>
+      <div style={styles.tableCardTitle}>T{table}</div>
 
       <div style={styles.seatGrid}>
         {seats.map(({ seat, player }) => (
@@ -477,6 +508,7 @@ function PlayerList({
   toggleEliminated,
   getUnavailableTableForPlayer,
   getAvailableSeatsForPlayer,
+  styles,
 }) {
   return (
     <section style={styles.listCard}>
@@ -497,427 +529,455 @@ function PlayerList({
         <div>OUT</div>
       </div>
 
-      {players.map((player) => {
-        const blockedTable = getUnavailableTableForPlayer(player.id);
-        const availableSeats = getAvailableSeatsForPlayer(player);
+      <div style={styles.listScroll}>
+        {players.map((player) => {
+          const blockedTable = getUnavailableTableForPlayer(player.id);
+          const availableSeats = getAvailableSeatsForPlayer(player);
 
-        const tableOptions = allowedTables.filter(
-          (table) => Number(table) !== Number(blockedTable)
-        );
+          const tableOptions = allowedTables.filter(
+            (table) => Number(table) !== Number(blockedTable)
+          );
 
-        return (
-          <div
-            key={player.id}
-            style={{
-              ...styles.playerRow,
-              ...(player.eliminated ? styles.eliminatedRow : {}),
-            }}
-          >
-            <div style={styles.idCell}>{player.id}</div>
+          return (
+            <div
+              key={player.id}
+              style={{
+                ...styles.playerRow,
+                ...(player.eliminated ? styles.eliminatedRow : {}),
+              }}
+            >
+              <div style={styles.idCell}>{player.id}</div>
 
-            <div style={styles.noCell}>
-              {blockedTable ? (
-                <span style={styles.blockedTable}>T {blockedTable}</span>
-              ) : (
-                <span style={styles.okTable}>OK</span>
-              )}
+              <div style={styles.noCell}>
+                {blockedTable ? (
+                  <span style={styles.blockedTable}>T {blockedTable}</span>
+                ) : (
+                  <span style={styles.okTable}>OK</span>
+                )}
+              </div>
+
+              <select
+                value={player.table}
+                disabled={player.eliminated}
+                onChange={(e) => updateTable(title, player.id, e.target.value)}
+                style={styles.tableSelect}
+              >
+                <option value="">-</option>
+                {tableOptions.map((table) => (
+                  <option key={table} value={table}>
+                    {table}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={player.seat}
+                disabled={player.eliminated || !player.table}
+                onChange={(e) => updateSeat(title, player.id, e.target.value)}
+                style={styles.seatSelect}
+              >
+                <option value="">-</option>
+                {availableSeats.map((seat) => (
+                  <option key={seat} value={seat}>
+                    {seat}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                type="checkbox"
+                checked={player.eliminated}
+                onChange={() => toggleEliminated(title, player.id)}
+                style={styles.checkbox}
+              />
             </div>
-
-            <select
-              value={player.table}
-              disabled={player.eliminated}
-              onChange={(e) => updateTable(title, player.id, e.target.value)}
-              style={styles.tableSelect}
-            >
-              <option value="">-</option>
-
-              {tableOptions.map((table) => (
-                <option key={table} value={table}>
-                  {table}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={player.seat}
-              disabled={player.eliminated || !player.table}
-              onChange={(e) => updateSeat(title, player.id, e.target.value)}
-              style={styles.seatSelect}
-            >
-              <option value="">-</option>
-
-              {availableSeats.map((seat) => (
-                <option key={seat} value={seat}>
-                  {seat}
-                </option>
-              ))}
-            </select>
-
-            <input
-              type="checkbox"
-              checked={player.eliminated}
-              onChange={() => toggleEliminated(title, player.id)}
-              style={styles.checkbox}
-            />
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </section>
   );
 }
 
-const styles = {
-  page: {
-    minHeight: "100vh",
-    background: "#e5e7eb",
-    padding: 8,
-    boxSizing: "border-box",
-    fontFamily: "Arial, Helvetica, sans-serif",
-    overflowX: "auto",
-  },
+function makeStyles({ isCompact, isVerySmall, screen }) {
+  const headerHeight = isVerySmall ? 92 : 105;
+  const workingHeight = Math.max(420, screen.height - headerHeight - 24);
 
-  app: {
-    minWidth: 1180,
-    maxWidth: 1400,
-    margin: "0 auto",
-    background: "white",
-    borderRadius: 14,
-    padding: 10,
-    boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
-  },
+  return {
+    page: {
+      height: "100vh",
+      background: "#e5e7eb",
+      padding: isVerySmall ? 4 : 6,
+      boxSizing: "border-box",
+      fontFamily: "Arial, Helvetica, sans-serif",
+      overflow: "hidden",
+    },
 
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 10,
-  },
+    app: {
+      height: "100%",
+      width: "100%",
+      margin: "0 auto",
+      background: "white",
+      borderRadius: 12,
+      padding: isVerySmall ? 5 : 8,
+      boxSizing: "border-box",
+      boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
+      overflow: "hidden",
+    },
 
-  logoBox: {
-    textAlign: "center",
-    flex: 1,
-  },
+    header: {
+      display: "grid",
+      gridTemplateColumns: isVerySmall ? "1fr" : "1fr auto",
+      gap: isVerySmall ? 4 : 8,
+      alignItems: "center",
+      marginBottom: 6,
+    },
 
-  logo: {
-    height: 80,
-    maxWidth: 250,
-    objectFit: "contain",
-  },
+    logoBox: {
+      textAlign: "center",
+    },
 
-  title: {
-    margin: 0,
-    fontSize: 22,
-    fontWeight: 900,
-    color: "#111827",
-  },
+    logo: {
+      height: isVerySmall ? 38 : 52,
+      maxWidth: isVerySmall ? 150 : 210,
+      objectFit: "contain",
+    },
 
-  countBox: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-  },
+    title: {
+      margin: 0,
+      fontSize: isVerySmall ? 13 : 17,
+      fontWeight: 900,
+      color: "#111827",
+    },
 
-  countCardTotal: {
-    border: "2px solid #111827",
-    borderRadius: 10,
-    minWidth: 70,
-    padding: 6,
-    textAlign: "center",
-    background: "#f8fafc",
-  },
+    countBox: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: isVerySmall ? "center" : "flex-end",
+      gap: 5,
+      flexWrap: "wrap",
+    },
 
-  countCardInv: {
-    border: "2px solid #d6b94c",
-    borderRadius: 10,
-    minWidth: 70,
-    padding: 6,
-    textAlign: "center",
-    background: "#fef3c7",
-  },
+    countCardTotal: {
+      border: "2px solid #111827",
+      borderRadius: 8,
+      minWidth: isVerySmall ? 48 : 58,
+      padding: 3,
+      textAlign: "center",
+      background: "#f8fafc",
+    },
 
-  countCardPro: {
-    border: "2px solid #93c5fd",
-    borderRadius: 10,
-    minWidth: 70,
-    padding: 6,
-    textAlign: "center",
-    background: "#dbeafe",
-  },
+    countCardInv: {
+      border: "2px solid #d6b94c",
+      borderRadius: 8,
+      minWidth: isVerySmall ? 48 : 58,
+      padding: 3,
+      textAlign: "center",
+      background: "#fef3c7",
+    },
 
-  countLabel: {
-    fontSize: 10,
-    fontWeight: 900,
-    color: "#475569",
-  },
+    countCardPro: {
+      border: "2px solid #93c5fd",
+      borderRadius: 8,
+      minWidth: isVerySmall ? 48 : 58,
+      padding: 3,
+      textAlign: "center",
+      background: "#dbeafe",
+    },
 
-  countValue: {
-    fontSize: 24,
-    fontWeight: 900,
-    color: "#111827",
-  },
+    countLabel: {
+      fontSize: 8,
+      fontWeight: 900,
+      color: "#475569",
+    },
 
-  undoButton: {
-    border: "2px solid #475569",
-    background: "#64748b",
-    color: "white",
-    fontWeight: 900,
-    borderRadius: 10,
-    padding: "12px 14px",
-    fontSize: 14,
-    cursor: "pointer",
-  },
+    countValue: {
+      fontSize: isVerySmall ? 15 : 19,
+      fontWeight: 900,
+      color: "#111827",
+    },
 
-  breakButton: {
-    border: "2px solid #b91c1c",
-    background: "#ef4444",
-    color: "white",
-    fontWeight: 900,
-    borderRadius: 10,
-    padding: "12px 14px",
-    fontSize: 14,
-    cursor: "pointer",
-  },
+    undoButton: {
+      border: "2px solid #475569",
+      background: "#64748b",
+      color: "white",
+      fontWeight: 900,
+      borderRadius: 8,
+      padding: isVerySmall ? "7px 7px" : "9px 10px",
+      fontSize: isVerySmall ? 10 : 12,
+      cursor: "pointer",
+    },
 
-  mainGrid: {
-    display: "grid",
-    gridTemplateColumns: "1.2fr 1fr",
-    gap: 10,
-    alignItems: "start",
-  },
+    breakButton: {
+      border: "2px solid #b91c1c",
+      background: "#ef4444",
+      color: "white",
+      fontWeight: 900,
+      borderRadius: 8,
+      padding: isVerySmall ? "7px 7px" : "9px 10px",
+      fontSize: isVerySmall ? 10 : 12,
+      cursor: "pointer",
+    },
 
-  tableOverview: {
-    border: "2px solid #111827",
-    borderRadius: 12,
-    padding: 8,
-    background: "#f8fafc",
-  },
+    mainGrid: {
+      height: workingHeight,
+      display: "grid",
+      gridTemplateColumns: isCompact
+        ? "150px minmax(260px, 1fr) minmax(260px, 1fr)"
+        : "180px minmax(320px, 1fr) minmax(320px, 1fr)",
+      gap: isVerySmall ? 5 : 8,
+      alignItems: "start",
+      overflow: "hidden",
+    },
 
-  overviewHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
-  },
+    tableOverview: {
+      height: "100%",
+      border: "2px solid #111827",
+      borderRadius: 10,
+      padding: 4,
+      background: "#f8fafc",
+      boxSizing: "border-box",
+      overflowY: "auto",
+    },
 
-  overviewLabel: {
-    fontSize: 10,
-    fontWeight: 900,
-    color: "#111827",
-  },
+    invListWrapper: {
+      height: "100%",
+      overflow: "hidden",
+    },
 
-  overviewSelect: {
-    display: "block",
-    marginTop: 2,
-    padding: 5,
-    fontSize: 14,
-    fontWeight: 900,
-    borderRadius: 7,
-    border: "1px solid #94a3b8",
-    background: "white",
-    color: "#000",
-  },
+    proListWrapper: {
+      height: "100%",
+      overflow: "hidden",
+    },
 
-  playerLists: {
-    minHeight: 0,
-  },
+    overviewHeader: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 4,
+      marginBottom: 5,
+      position: "sticky",
+      top: 0,
+      background: "#f8fafc",
+      zIndex: 5,
+      paddingBottom: 3,
+    },
 
-  sharedScrollArea: {
-    maxHeight: "calc(100vh - 140px)",
-    overflowY: "auto",
-    borderRadius: 12,
-  },
+    overviewLabel: {
+      fontSize: 8,
+      fontWeight: 900,
+      color: "#111827",
+    },
 
-  playerListsInner: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 8,
-    alignItems: "start",
-  },
+    overviewSelect: {
+      display: "block",
+      marginTop: 1,
+      padding: 2,
+      fontSize: 10,
+      fontWeight: 900,
+      borderRadius: 5,
+      border: "1px solid #94a3b8",
+      background: "white",
+      color: "#000",
+      width: 48,
+    },
 
-  sectionTitle: {
-    margin: 0,
-    textAlign: "center",
-    fontSize: 16,
-    fontWeight: 900,
-    color: "#111827",
-  },
+    sectionTitle: {
+      margin: 0,
+      textAlign: "center",
+      fontSize: isVerySmall ? 11 : 13,
+      fontWeight: 900,
+      color: "#111827",
+    },
 
-  invTitle: {
-    color: "#b45309",
-  },
+    invTitle: {
+      color: "#b45309",
+    },
 
-  proTitle: {
-    color: "#1d4ed8",
-  },
+    proTitle: {
+      color: "#1d4ed8",
+    },
 
-  tablesGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr",
-    gap: 8,
-    alignItems: "start",
-  },
+    tablesGrid: {
+      display: "grid",
+      gridTemplateColumns: "1fr",
+      gap: 4,
+      alignItems: "start",
+    },
 
-  tableCard: {
-    border: "2px solid #334155",
-    borderRadius: 10,
-    overflow: "hidden",
-    background: "white",
-  },
+    tableCard: {
+      border: "1px solid #334155",
+      borderRadius: 6,
+      overflow: "hidden",
+      background: "white",
+      width: "100%",
+      boxSizing: "border-box",
+    },
 
-  tableCardTitle: {
-    background: "#111827",
-    color: "white",
-    fontWeight: 900,
-    textAlign: "center",
-    padding: "5px 0",
-    fontSize: 14,
-  },
+    tableCardTitle: {
+      background: "#111827",
+      color: "white",
+      fontWeight: 900,
+      textAlign: "center",
+      padding: "2px 0",
+      fontSize: 10,
+    },
 
-  seatGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(4, 1fr)",
-    gap: 2,
-    padding: 4,
-    background: "#cbd5e1",
-  },
+    seatGrid: {
+      display: "grid",
+      gridTemplateColumns: "repeat(4, 1fr)",
+      gap: 1,
+      padding: 2,
+      background: "#cbd5e1",
+    },
 
-  seatBox: {
-    background: "white",
-    borderRadius: 6,
-    overflow: "hidden",
-    border: "1px solid #94a3b8",
-  },
+    seatBox: {
+      background: "white",
+      borderRadius: 4,
+      overflow: "hidden",
+      border: "1px solid #94a3b8",
+    },
 
-  seatNumber: {
-    background: "#e2e8f0",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    fontSize: 10,
-    fontWeight: 900,
-    color: "#334155",
-    padding: "0 3px",
-  },
+    seatNumber: {
+      background: "#e2e8f0",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      fontSize: 7,
+      fontWeight: 900,
+      color: "#334155",
+      padding: "0 1px",
+    },
 
-  pairWarning: {
-    color: "#dc2626",
-    fontWeight: 900,
-    fontSize: 11,
-  },
+    pairWarning: {
+      color: "#dc2626",
+      fontWeight: 900,
+      fontSize: 7,
+    },
 
-  seatId: {
-    minHeight: 24,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 14,
-    fontWeight: 900,
-    color: "#111827",
-  },
+    seatId: {
+      minHeight: isVerySmall ? 13 : 15,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: isVerySmall ? 8 : 9,
+      fontWeight: 900,
+      color: "#111827",
+    },
 
-  invSeat: {
-    background: "#fef3c7",
-  },
+    invSeat: {
+      background: "#fef3c7",
+    },
 
-  proSeat: {
-    background: "#dbeafe",
-  },
+    proSeat: {
+      background: "#dbeafe",
+    },
 
-  listCard: {
-    border: "2px solid #111827",
-    borderRadius: 12,
-    padding: 6,
-    background: "#f8fafc",
-  },
+    listCard: {
+      height: "100%",
+      border: "2px solid #111827",
+      borderRadius: 10,
+      padding: 5,
+      background: "#f8fafc",
+      boxSizing: "border-box",
+      display: "flex",
+      flexDirection: "column",
+      overflow: "hidden",
+    },
 
-  playerHeader: {
-    display: "grid",
-    gridTemplateColumns: "40px 48px 1fr 1fr 38px",
-    gap: 3,
-    background: "#334155",
-    color: "white",
-    fontSize: 10,
-    fontWeight: 900,
-    textAlign: "center",
-    padding: 3,
-    borderRadius: 6,
-    marginBottom: 3,
-    position: "sticky",
-    top: 0,
-    zIndex: 3,
-  },
+    listScroll: {
+      overflowY: "auto",
+      paddingRight: 2,
+    },
 
-  playerRow: {
-    display: "grid",
-    gridTemplateColumns: "40px 48px 1fr 1fr 38px",
-    gap: 3,
-    background: "#cbd5e1",
-    padding: 3,
-    borderRadius: 6,
-    marginBottom: 3,
-    alignItems: "center",
-  },
+    playerHeader: {
+      display: "grid",
+      gridTemplateColumns: isVerySmall
+        ? "34px 42px 1fr 1fr 32px"
+        : "40px 48px 1fr 1fr 38px",
+      gap: 3,
+      background: "#334155",
+      color: "white",
+      fontSize: 10,
+      fontWeight: 900,
+      textAlign: "center",
+      padding: 3,
+      borderRadius: 6,
+      marginBottom: 3,
+      flexShrink: 0,
+    },
 
-  eliminatedRow: {
-    opacity: 0.45,
-  },
+    playerRow: {
+      display: "grid",
+      gridTemplateColumns: isVerySmall
+        ? "34px 42px 1fr 1fr 32px"
+        : "40px 48px 1fr 1fr 38px",
+      gap: 3,
+      background: "#cbd5e1",
+      padding: 3,
+      borderRadius: 6,
+      marginBottom: 3,
+      alignItems: "center",
+    },
 
-  idCell: {
-    background: "white",
-    borderRadius: 5,
-    textAlign: "center",
-    fontSize: 13,
-    fontWeight: 900,
-    padding: "4px 0",
-  },
+    eliminatedRow: {
+      opacity: 0.45,
+    },
 
-  noCell: {
-    background: "white",
-    borderRadius: 5,
-    textAlign: "center",
-    fontSize: 11,
-    fontWeight: 900,
-    padding: "4px 0",
-  },
+    idCell: {
+      background: "white",
+      borderRadius: 5,
+      textAlign: "center",
+      fontSize: isVerySmall ? 11 : 13,
+      fontWeight: 900,
+      padding: "4px 0",
+    },
 
-  blockedTable: {
-    background: "#ef4444",
-    color: "white",
-    padding: "2px 5px",
-    borderRadius: 5,
-  },
+    noCell: {
+      background: "white",
+      borderRadius: 5,
+      textAlign: "center",
+      fontSize: isVerySmall ? 9 : 11,
+      fontWeight: 900,
+      padding: "4px 0",
+    },
 
-  okTable: {
-    color: "#15803d",
-  },
+    blockedTable: {
+      background: "#ef4444",
+      color: "white",
+      padding: "2px 5px",
+      borderRadius: 5,
+    },
 
-  tableSelect: {
-    width: "100%",
-    minHeight: 26,
-    borderRadius: 5,
-    border: "1px solid #94a3b8",
-    background: "white",
-    color: "#000",
-    fontWeight: 900,
-    textAlign: "center",
-  },
+    okTable: {
+      color: "#15803d",
+    },
 
-  seatSelect: {
-    width: "100%",
-    minHeight: 26,
-    borderRadius: 5,
-    border: "1px solid #d6b94c",
-    background: "#fef3c7",
-    color: "#000",
-    fontWeight: 900,
-    textAlign: "center",
-  },
+    tableSelect: {
+      width: "100%",
+      minHeight: isVerySmall ? 24 : 26,
+      borderRadius: 5,
+      border: "1px solid #94a3b8",
+      background: "white",
+      color: "#000",
+      fontWeight: 900,
+      textAlign: "center",
+    },
 
-  checkbox: {
-    width: 22,
-    height: 22,
-    margin: "0 auto",
-  },
-};
+    seatSelect: {
+      width: "100%",
+      minHeight: isVerySmall ? 24 : 26,
+      borderRadius: 5,
+      border: "1px solid #d6b94c",
+      background: "#fef3c7",
+      color: "#000",
+      fontWeight: 900,
+      textAlign: "center",
+    },
+
+    checkbox: {
+      width: isVerySmall ? 18 : 22,
+      height: isVerySmall ? 18 : 22,
+      margin: "0 auto",
+    },
+  };
+}
