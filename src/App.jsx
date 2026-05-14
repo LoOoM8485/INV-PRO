@@ -754,7 +754,7 @@ const styles = {
 
   tablesGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(2, 1fr)",
+    gridTemplateColumns: "1fr",
     gap: 8,
     alignItems: "start",
   },
