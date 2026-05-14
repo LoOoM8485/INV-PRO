@@ -6,7 +6,7 @@ const SEATS = [1, 2, 3, 5, 6, 7, 8, 9];
 const INV_IDS = Array.from({ length: 56 }, (_, i) => i * 2 + 1);
 const PRO_IDS = Array.from({ length: 56 }, (_, i) => i * 2 + 2);
 
-const STORAGE_KEY = "inv-pro-table-planner-v10";
+const STORAGE_KEY = "inv-pro-table-planner-v12";
 
 function getPairId(id) {
   return id % 2 === 1 ? id + 1 : id - 1;
@@ -45,10 +45,12 @@ function cryptoRandomIndex(maxExclusive) {
 
 function cryptoShuffle(items) {
   const array = [...items];
+
   for (let i = array.length - 1; i > 0; i--) {
     const j = cryptoRandomIndex(i + 1);
     [array[i], array[j]] = [array[j], array[i]];
   }
+
   return array;
 }
 
@@ -103,11 +105,13 @@ export default function App() {
 
   const occupiedSeats = useMemo(() => {
     const map = new Map();
+
     allPlayers.forEach((player) => {
       if (playerHasSeat(player)) {
         map.set(`${player.table}-${player.seat}`, player.id);
       }
     });
+
     return map;
   }, [allPlayers]);
 
@@ -237,6 +241,7 @@ export default function App() {
 
         for (const seat of cryptoShuffle(SEATS)) {
           const key = `${table}-${seat}`;
+
           if (!occupied.has(key)) {
             candidates.push({
               table: String(table),
@@ -337,6 +342,16 @@ export default function App() {
       return;
     }
 
+    const summaryLines = breakingPlayers
+      .slice()
+      .sort((a, b) => Number(a.seat) - Number(b.seat))
+      .map((player) => {
+        const destination = assignments.get(player.id);
+        return `Seat${player.seat} - ID ${player.id} - T${destination.table} S${destination.seat}`;
+      });
+
+    alert(`Table ${highestTableInPlay} break:\n\n${summaryLines.join("\n")}`);
+
     const snapshotBeforeBreak = JSON.parse(JSON.stringify(state));
 
     setState((current) => ({
@@ -368,7 +383,7 @@ export default function App() {
 
           <div style={styles.countBox}>
             <button onClick={undoBreak} style={styles.undoButton}>
-              UNDO BREAK
+              UNDO
             </button>
 
             <div style={styles.countCardTotal}>
@@ -461,6 +476,20 @@ export default function App() {
 }
 
 function TableCard({ table, allPlayers, styles }) {
+  function getBlockedTableForSeatPlayer(player) {
+    if (!player) return "";
+
+    const pairId = getPairId(player.id);
+
+    const pair = allPlayers.find(
+      (p) => p.id === pairId && p.table !== "" && p.seat !== "" && !p.eliminated
+    );
+
+    if (!pair) return "";
+
+    return pair.table;
+  }
+
   const seats = SEATS.map((seat) => {
     const player = allPlayers.find(
       (p) =>
@@ -477,26 +506,31 @@ function TableCard({ table, allPlayers, styles }) {
       <div style={styles.tableCardTitle}>T{table}</div>
 
       <div style={styles.seatGrid}>
-        {seats.map(({ seat, player }) => (
-          <div key={seat} style={styles.seatBox}>
-            <div style={styles.seatNumber}>
-              <span>S{seat}</span>
-              {player ? (
-                <span style={styles.pairWarning}>{getPairId(player.id)}</span>
-              ) : null}
-            </div>
+        {seats.map(({ seat, player }) => {
+          const blockedTable = getBlockedTableForSeatPlayer(player);
 
-            <div
-              style={{
-                ...styles.seatId,
-                ...(player?.type === "INV" ? styles.invSeat : {}),
-                ...(player?.type === "PRO" ? styles.proSeat : {}),
-              }}
-            >
-              {player ? player.id : "-"}
+          return (
+            <div key={seat} style={styles.seatBox}>
+              <div style={styles.seatNumber}>
+                <span>S{seat}</span>
+
+                {blockedTable ? (
+                  <span style={styles.pairWarning}>{blockedTable}</span>
+                ) : null}
+              </div>
+
+              <div
+                style={{
+                  ...styles.seatId,
+                  ...(player?.type === "INV" ? styles.invSeat : {}),
+                  ...(player?.type === "PRO" ? styles.proSeat : {}),
+                }}
+              >
+                {player ? player.id : "-"}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -603,7 +637,10 @@ function PlayerList({
 
 function makeStyles(screen) {
   const overviewWidth = Math.max(170, Math.min(300, Math.round(screen.width * 0.24)));
-  const listsWidth = 540;
+
+  const invProColumnWidth = 186;
+  const listsGap = 6;
+  const listsWidth = invProColumnWidth * 2 + listsGap;
 
   return {
     page: {
@@ -630,7 +667,7 @@ function makeStyles(screen) {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
-      gap: 8,
+      gap: 6,
       marginBottom: 8,
     },
 
@@ -640,14 +677,14 @@ function makeStyles(screen) {
     },
 
     logo: {
-      height: 54,
-      maxWidth: 190,
+      height: 50,
+      maxWidth: 170,
       objectFit: "contain",
     },
 
     title: {
       margin: 0,
-      fontSize: 16,
+      fontSize: 14,
       fontWeight: 900,
       color: "#111827",
     },
@@ -655,44 +692,44 @@ function makeStyles(screen) {
     countBox: {
       display: "flex",
       alignItems: "center",
-      gap: 5,
+      gap: 4,
     },
 
     countCardTotal: {
       border: "2px solid #111827",
-      borderRadius: 8,
-      minWidth: 48,
-      padding: 3,
+      borderRadius: 7,
+      minWidth: 42,
+      padding: 2,
       textAlign: "center",
       background: "#f8fafc",
     },
 
     countCardInv: {
       border: "2px solid #d6b94c",
-      borderRadius: 8,
-      minWidth: 48,
-      padding: 3,
+      borderRadius: 7,
+      minWidth: 42,
+      padding: 2,
       textAlign: "center",
       background: "#fef3c7",
     },
 
     countCardPro: {
       border: "2px solid #93c5fd",
-      borderRadius: 8,
-      minWidth: 48,
-      padding: 3,
+      borderRadius: 7,
+      minWidth: 42,
+      padding: 2,
       textAlign: "center",
       background: "#dbeafe",
     },
 
     countLabel: {
-      fontSize: 8,
+      fontSize: 7,
       fontWeight: 900,
       color: "#475569",
     },
 
     countValue: {
-      fontSize: 17,
+      fontSize: 15,
       fontWeight: 900,
       color: "#111827",
     },
@@ -702,9 +739,9 @@ function makeStyles(screen) {
       background: "#64748b",
       color: "white",
       fontWeight: 900,
-      borderRadius: 8,
-      padding: "8px 8px",
-      fontSize: 11,
+      borderRadius: 7,
+      padding: "6px 6px",
+      fontSize: 9,
       cursor: "pointer",
     },
 
@@ -713,9 +750,9 @@ function makeStyles(screen) {
       background: "#ef4444",
       color: "white",
       fontWeight: 900,
-      borderRadius: 8,
-      padding: "8px 8px",
-      fontSize: 11,
+      borderRadius: 7,
+      padding: "6px 6px",
+      fontSize: 9,
       cursor: "pointer",
     },
 
@@ -733,7 +770,7 @@ function makeStyles(screen) {
       background: "#f8fafc",
       width: overviewWidth,
       boxSizing: "border-box",
-      maxHeight: "calc(100vh - 110px)",
+      maxHeight: "calc(100vh - 100px)",
       overflowY: "auto",
     },
 
@@ -775,22 +812,22 @@ function makeStyles(screen) {
     },
 
     sharedScrollArea: {
-      maxHeight: "calc(100vh - 110px)",
+      maxHeight: "calc(100vh - 100px)",
       overflowY: "auto",
       borderRadius: 10,
     },
 
     playerListsInner: {
       display: "grid",
-      gridTemplateColumns: "266px 266px",
-      gap: 8,
+      gridTemplateColumns: `${invProColumnWidth}px ${invProColumnWidth}px`,
+      gap: listsGap,
       alignItems: "start",
     },
 
     sectionTitle: {
       margin: 0,
       textAlign: "center",
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: 900,
       color: "#111827",
     },
@@ -880,20 +917,20 @@ function makeStyles(screen) {
 
     listCard: {
       border: "2px solid #111827",
-      borderRadius: 10,
-      padding: 4,
+      borderRadius: 9,
+      padding: 3,
       background: "#f8fafc",
-      width: 266,
+      width: invProColumnWidth,
       boxSizing: "border-box",
     },
 
     playerHeader: {
       display: "grid",
-      gridTemplateColumns: "32px 42px 58px 58px 30px",
+      gridTemplateColumns: "25px 34px 39px 39px 24px",
       gap: 2,
       background: "#334155",
       color: "white",
-      fontSize: 9,
+      fontSize: 8,
       fontWeight: 900,
       textAlign: "center",
       padding: 2,
@@ -906,7 +943,7 @@ function makeStyles(screen) {
 
     playerRow: {
       display: "grid",
-      gridTemplateColumns: "32px 42px 58px 58px 30px",
+      gridTemplateColumns: "25px 34px 39px 39px 24px",
       gap: 2,
       background: "#cbd5e1",
       padding: 2,
@@ -923,7 +960,7 @@ function makeStyles(screen) {
       background: "white",
       borderRadius: 4,
       textAlign: "center",
-      fontSize: 11,
+      fontSize: 9,
       fontWeight: 900,
       padding: "3px 0",
     },
@@ -932,7 +969,7 @@ function makeStyles(screen) {
       background: "white",
       borderRadius: 4,
       textAlign: "center",
-      fontSize: 9,
+      fontSize: 7,
       fontWeight: 900,
       padding: "3px 0",
     },
@@ -940,7 +977,7 @@ function makeStyles(screen) {
     blockedTable: {
       background: "#ef4444",
       color: "white",
-      padding: "1px 3px",
+      padding: "1px 2px",
       borderRadius: 4,
     },
 
@@ -950,31 +987,31 @@ function makeStyles(screen) {
 
     tableSelect: {
       width: "100%",
-      minHeight: 22,
+      minHeight: 20,
       borderRadius: 4,
       border: "1px solid #94a3b8",
       background: "white",
       color: "#000",
       fontWeight: 900,
       textAlign: "center",
-      fontSize: 11,
+      fontSize: 10,
     },
 
     seatSelect: {
       width: "100%",
-      minHeight: 22,
+      minHeight: 20,
       borderRadius: 4,
       border: "1px solid #d6b94c",
       background: "#fef3c7",
       color: "#000",
       fontWeight: 900,
       textAlign: "center",
-      fontSize: 11,
+      fontSize: 10,
     },
 
     checkbox: {
-      width: 18,
-      height: 18,
+      width: 15,
+      height: 15,
       margin: "0 auto",
     },
   };
