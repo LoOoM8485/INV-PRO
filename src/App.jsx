@@ -1,12 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { db } from "./firebase";
-
-import {
-  doc,
-  getDoc,
-  onSnapshot,
-  setDoc,
-} from "firebase/firestore";
+import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 
 const TABLES = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15];
 const SEATS = [1, 2, 3, 5, 6, 7, 8, 9];
@@ -21,13 +15,7 @@ function getPairId(id) {
 }
 
 function emptyPlayer(id, type) {
-  return {
-    id,
-    type,
-    table: "",
-    seat: "",
-    eliminated: false,
-  };
+  return { id, type, table: "", seat: "", eliminated: false };
 }
 
 function createInitialState() {
@@ -40,37 +28,92 @@ function createInitialState() {
 }
 
 function playerHasSeat(player) {
-  return (
-    player.table !== "" &&
-    player.seat !== "" &&
-    !player.eliminated
-  );
+  return player.table !== "" && player.seat !== "" && !player.eliminated;
+}
+
+function cryptoRandomIndex(maxExclusive) {
+  const array = new Uint32Array(1);
+  crypto.getRandomValues(array);
+  return array[0] % maxExclusive;
+}
+
+function cryptoShuffle(items) {
+  const array = [...items];
+
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = cryptoRandomIndex(i + 1);
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+
+  return array;
+}
+
+function useScreenSize() {
+  const [size, setSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+
+  useEffect(() => {
+    const update = () =>
+      setSize({ width: window.innerWidth, height: window.innerHeight });
+
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+    };
+  }, []);
+
+  return size;
 }
 
 export default function App() {
   const [state, setState] = useState(createInitialState());
   const [loaded, setLoaded] = useState(false);
+  const screen = useScreenSize();
+  const latestStateRef = useRef(state);
 
   useEffect(() => {
-    async function init() {
+    latestStateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    async function initFirebase() {
       const snap = await getDoc(DOC_REF);
 
       if (!snap.exists()) {
         await setDoc(DOC_REF, createInitialState());
       }
 
-      onSnapshot(DOC_REF, (snapshot) => {
+      return onSnapshot(DOC_REF, (snapshot) => {
         if (snapshot.exists()) {
-          setState(snapshot.data());
+          const firebaseData = {
+            ...createInitialState(),
+            ...snapshot.data(),
+          };
+
+          setState(firebaseData);
           setLoaded(true);
         }
       });
     }
 
-    init();
+    let unsubscribe;
+
+    initFirebase().then((unsub) => {
+      unsubscribe = unsub;
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   async function saveState(newState) {
+    latestStateRef.current = newState;
     setState(newState);
     await setDoc(DOC_REF, newState);
   }
@@ -84,13 +127,13 @@ export default function App() {
     [state.inv, state.pro]
   );
 
+  const livePlayers = allPlayers.filter(playerHasSeat);
+  const invLive = state.inv.filter(playerHasSeat).length;
+  const proLive = state.pro.filter(playerHasSeat).length;
+
   const playerById = useMemo(() => {
     const map = new Map();
-
-    allPlayers.forEach((p) => {
-      map.set(p.id, p);
-    });
-
+    allPlayers.forEach((player) => map.set(player.id, player));
     return map;
   }, [allPlayers]);
 
@@ -106,34 +149,28 @@ export default function App() {
     return map;
   }, [allPlayers]);
 
-  const livePlayers = allPlayers.filter(playerHasSeat);
-
-  const invLive = state.inv.filter(playerHasSeat).length;
-  const proLive = state.pro.filter(playerHasSeat).length;
-
-  const tablesInPlay = TABLES.filter((table) =>
-    allPlayers.some(
-      (player) =>
-        Number(player.table) === Number(table) &&
-        player.seat !== "" &&
-        !player.eliminated
-    )
-  );
+  const tablesInPlay = useMemo(() => {
+    return TABLES.filter((table) =>
+      allPlayers.some(
+        (player) =>
+          Number(player.table) === Number(table) &&
+          player.seat !== "" &&
+          !player.eliminated
+      )
+    );
+  }, [allPlayers]);
 
   const highestTableInPlay =
-    tablesInPlay.length > 0
-      ? Math.max(...tablesInPlay)
-      : "";
+    tablesInPlay.length > 0 ? Math.max(...tablesInPlay) : "";
 
   function updatePlayer(type, id, patch) {
+    const current = latestStateRef.current;
     const key = type === "INV" ? "inv" : "pro";
 
     const newState = {
-      ...state,
-      [key]: state[key].map((player) =>
-        player.id === id
-          ? { ...player, ...patch }
-          : player
+      ...current,
+      [key]: current[key].map((player) =>
+        player.id === id ? { ...player, ...patch } : player
       ),
     };
 
@@ -157,6 +194,7 @@ export default function App() {
 
   function toggleEliminated(type, id) {
     const player = playerById.get(id);
+    if (!player) return;
 
     updatePlayer(type, id, {
       eliminated: !player.eliminated,
@@ -167,9 +205,7 @@ export default function App() {
 
   function getUnavailableTableForPlayer(id) {
     const pair = playerById.get(getPairId(id));
-
     if (!pair || !playerHasSeat(pair)) return "";
-
     return pair.table;
   }
 
@@ -179,19 +215,218 @@ export default function App() {
     return SEATS.filter((seat) => {
       const key = `${player.table}-${seat}`;
       const occupantId = occupiedSeats.get(key);
-
       return !occupantId || occupantId === player.id;
     });
   }
 
+  function changeVisibleMaxTable(value) {
+    saveState({
+      ...latestStateRef.current,
+      visibleMaxTable: value,
+    });
+  }
+
+  function undoBreak() {
+    if (!state.lastBreakSnapshot) {
+      alert("No table break to undo.");
+      return;
+    }
+
+    if (!window.confirm("Undo the last table break?")) return;
+
+    saveState({
+      ...state.lastBreakSnapshot,
+      lastBreakSnapshot: null,
+    });
+  }
+
+  function findRandomBreakAssignments({
+    breakingPlayers,
+    lowerTables,
+    currentOccupied,
+    playerById,
+    breakingTable,
+  }) {
+    const breakingIds = new Set(breakingPlayers.map((p) => p.id));
+
+    function getPairTable(player, assignments) {
+      const pairId = getPairId(player.id);
+
+      if (assignments.has(pairId)) {
+        return Number(assignments.get(pairId).table);
+      }
+
+      const pair = playerById.get(pairId);
+
+      if (
+        pair &&
+        playerHasSeat(pair) &&
+        !breakingIds.has(pair.id) &&
+        Number(pair.table) !== Number(breakingTable)
+      ) {
+        return Number(pair.table);
+      }
+
+      return "";
+    }
+
+    function getCandidates(player, occupied, assignments) {
+      const blockedTable = getPairTable(player, assignments);
+      const candidates = [];
+
+      for (const table of cryptoShuffle(lowerTables)) {
+        if (Number(table) === Number(blockedTable)) continue;
+
+        for (const seat of cryptoShuffle(SEATS)) {
+          const key = `${table}-${seat}`;
+
+          if (!occupied.has(key)) {
+            candidates.push({
+              table: String(table),
+              seat: String(seat),
+              key,
+            });
+          }
+        }
+      }
+
+      return cryptoShuffle(candidates);
+    }
+
+    function solve(unassigned, occupied, assignments) {
+      if (unassigned.length === 0) return assignments;
+
+      const rankedPlayers = cryptoShuffle(unassigned)
+        .map((player) => ({
+          player,
+          candidates: getCandidates(player, occupied, assignments),
+        }))
+        .sort((a, b) => a.candidates.length - b.candidates.length);
+
+      const chosen = rankedPlayers[0];
+      if (chosen.candidates.length === 0) return null;
+
+      const remaining = unassigned.filter((p) => p.id !== chosen.player.id);
+
+      for (const candidate of chosen.candidates) {
+        const nextOccupied = new Map(occupied);
+        const nextAssignments = new Map(assignments);
+
+        nextOccupied.set(candidate.key, chosen.player.id);
+        nextAssignments.set(chosen.player.id, {
+          table: candidate.table,
+          seat: candidate.seat,
+        });
+
+        const result = solve(remaining, nextOccupied, nextAssignments);
+        if (result) return result;
+      }
+
+      return null;
+    }
+
+    for (let attempt = 0; attempt < 300; attempt++) {
+      const result = solve(
+        cryptoShuffle(breakingPlayers),
+        new Map(currentOccupied),
+        new Map()
+      );
+
+      if (result) return result;
+    }
+
+    return null;
+  }
+
+  function breakTable() {
+    if (!highestTableInPlay) {
+      alert("No table is currently in play.");
+      return;
+    }
+
+    if (!window.confirm(`Do you really want to break Table ${highestTableInPlay}?`)) {
+      return;
+    }
+
+    const current = latestStateRef.current;
+    const currentAllPlayers = [...current.inv, ...current.pro];
+
+    const breakingPlayers = currentAllPlayers.filter(
+      (player) =>
+        Number(player.table) === Number(highestTableInPlay) &&
+        player.seat !== "" &&
+        !player.eliminated
+    );
+
+    const lowerTables = TABLES.filter(
+      (table) => Number(table) < Number(highestTableInPlay)
+    );
+
+    const currentOccupied = new Map();
+
+    currentAllPlayers.forEach((player) => {
+      if (playerHasSeat(player)) {
+        currentOccupied.set(`${player.table}-${player.seat}`, player.id);
+      }
+    });
+
+    breakingPlayers.forEach((player) => {
+      currentOccupied.delete(`${player.table}-${player.seat}`);
+    });
+
+    const currentPlayerById = new Map();
+    currentAllPlayers.forEach((player) => currentPlayerById.set(player.id, player));
+
+    const assignments = findRandomBreakAssignments({
+      breakingPlayers,
+      lowerTables,
+      currentOccupied,
+      playerById: currentPlayerById,
+      breakingTable: highestTableInPlay,
+    });
+
+    if (!assignments) {
+      alert(
+        `Cannot break Table ${highestTableInPlay}. Not enough legal seats available.`
+      );
+      return;
+    }
+
+    const summaryLines = breakingPlayers
+      .slice()
+      .sort((a, b) => Number(a.seat) - Number(b.seat))
+      .map((player) => {
+        const destination = assignments.get(player.id);
+        return `Seat${player.seat} - ID ${player.id} - T${destination.table} S${destination.seat}`;
+      });
+
+    alert(`Table ${highestTableInPlay} break:\n\n${summaryLines.join("\n")}`);
+
+    const snapshotBeforeBreak = JSON.parse(JSON.stringify(current));
+
+    const newState = {
+      ...current,
+      lastBreakSnapshot: snapshotBeforeBreak,
+      inv: current.inv.map((player) =>
+        assignments.has(player.id)
+          ? { ...player, ...assignments.get(player.id) }
+          : player
+      ),
+      pro: current.pro.map((player) =>
+        assignments.has(player.id)
+          ? { ...player, ...assignments.get(player.id) }
+          : player
+      ),
+    };
+
+    saveState(newState);
+  }
+
+  const styles = makeStyles(screen);
+
   if (!loaded) {
     return (
-      <div
-        style={{
-          padding: 40,
-          fontFamily: "Arial",
-        }}
-      >
+      <div style={{ padding: 30, fontFamily: "Arial", fontWeight: 900 }}>
         Loading planner...
       </div>
     );
@@ -199,78 +434,124 @@ export default function App() {
 
   return (
     <div style={styles.page}>
-      <div style={styles.header}>
-        <img
-          src="/logo.png"
-          alt="logo"
-          style={styles.logo}
-        />
-
-        <div style={styles.counterRow}>
-          <div style={styles.totalBox}>
-            TOTAL {livePlayers.length}
+      <div style={styles.app}>
+        <header style={styles.header}>
+          <div style={styles.logoBox}>
+            <img src="/logo.png" alt="Logo" style={styles.logo} />
+            <h1 style={styles.title}>INV / PRO TABLE PLANNER</h1>
           </div>
 
-          <div style={styles.invBox}>
-            INV {invLive}
+          <div style={styles.countBox}>
+            <button onClick={undoBreak} style={styles.undoButton}>
+              UNDO
+            </button>
+
+            <div style={styles.countCardTotal}>
+              <div style={styles.countLabel}>TOTAL</div>
+              <div style={styles.countValue}>{livePlayers.length}</div>
+            </div>
+
+            <div style={styles.countCardInv}>
+              <div style={styles.countLabel}>INV</div>
+              <div style={styles.countValue}>{invLive}</div>
+            </div>
+
+            <div style={styles.countCardPro}>
+              <div style={styles.countLabel}>PRO</div>
+              <div style={styles.countValue}>{proLive}</div>
+            </div>
+
+            <button onClick={breakTable} style={styles.breakButton}>
+              BREAK {highestTableInPlay ? `T${highestTableInPlay}` : ""}
+            </button>
           </div>
+        </header>
 
-          <div style={styles.proBox}>
-            PRO {proLive}
-          </div>
-        </div>
-      </div>
+        <main style={styles.mainGrid}>
+          <section style={styles.tableOverview}>
+            <div style={styles.overviewHeader}>
+              <h2 style={styles.sectionTitle}>TABLES</h2>
 
-      <div style={styles.main}>
-        <div style={styles.tablesColumn}>
-          {visibleTables.map((table) => (
-            <TableCard
-              key={table}
-              table={table}
-              allPlayers={allPlayers}
-            />
-          ))}
-        </div>
+              <label style={styles.overviewLabel}>
+                SHOW
+                <select
+                  value={state.visibleMaxTable}
+                  onChange={(e) => changeVisibleMaxTable(Number(e.target.value))}
+                  style={styles.overviewSelect}
+                >
+                  {TABLES.map((table) => (
+                    <option key={table} value={table}>
+                      {table}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
-        <div style={styles.listArea}>
-          <PlayerList
-            title="INV"
-            players={state.inv}
-            allPlayers={allPlayers}
-            allowedTables={visibleTables}
-            updateTable={setPlayerTable}
-            updateSeat={setPlayerSeat}
-            toggleEliminated={toggleEliminated}
-            getUnavailableTableForPlayer={
-              getUnavailableTableForPlayer
-            }
-            getAvailableSeatsForPlayer={
-              getAvailableSeatsForPlayer
-            }
-          />
+            <div style={styles.tablesGrid}>
+              {visibleTables.map((table) => (
+                <TableCard
+                  key={table}
+                  table={table}
+                  allPlayers={allPlayers}
+                  styles={styles}
+                />
+              ))}
+            </div>
+          </section>
 
-          <PlayerList
-            title="PRO"
-            players={state.pro}
-            allPlayers={allPlayers}
-            allowedTables={visibleTables}
-            updateTable={setPlayerTable}
-            updateSeat={setPlayerSeat}
-            toggleEliminated={toggleEliminated}
-            getUnavailableTableForPlayer={
-              getUnavailableTableForPlayer
-            }
-            getAvailableSeatsForPlayer={
-              getAvailableSeatsForPlayer
-            }
-          />
-        </div>
+          <section style={styles.playerLists}>
+            <div style={styles.sharedScrollArea}>
+              <div style={styles.playerListsInner}>
+                <PlayerList
+                  title="INV"
+                  players={state.inv}
+                  allPlayers={allPlayers}
+                  allowedTables={visibleTables}
+                  updateTable={setPlayerTable}
+                  updateSeat={setPlayerSeat}
+                  toggleEliminated={toggleEliminated}
+                  getUnavailableTableForPlayer={getUnavailableTableForPlayer}
+                  getAvailableSeatsForPlayer={getAvailableSeatsForPlayer}
+                  styles={styles}
+                />
+
+                <PlayerList
+                  title="PRO"
+                  players={state.pro}
+                  allPlayers={allPlayers}
+                  allowedTables={visibleTables}
+                  updateTable={setPlayerTable}
+                  updateSeat={setPlayerSeat}
+                  toggleEliminated={toggleEliminated}
+                  getUnavailableTableForPlayer={getUnavailableTableForPlayer}
+                  getAvailableSeatsForPlayer={getAvailableSeatsForPlayer}
+                  styles={styles}
+                />
+              </div>
+            </div>
+          </section>
+        </main>
       </div>
     </div>
   );
 }
 
-function TableCard({ table, allPlayers }) {
+function TableCard({ table, allPlayers, styles }) {
+  function getBlockedTableForSeatPlayer(player) {
+    if (!player) return "";
+
+    const pairId = getPairId(player.id);
+
+    const pair = allPlayers.find(
+      (p) => p.id === pairId && p.table !== "" && p.seat !== "" && !p.eliminated
+    );
+
+    if (!pair) return "";
+
+    return pair.table;
+  }
+
   const seats = SEATS.map((seat) => {
     const player = allPlayers.find(
       (p) =>
@@ -284,32 +565,34 @@ function TableCard({ table, allPlayers }) {
 
   return (
     <div style={styles.tableCard}>
-      <div style={styles.tableTitle}>
-        T{table}
-      </div>
+      <div style={styles.tableCardTitle}>T{table}</div>
 
       <div style={styles.seatGrid}>
-        {seats.map(({ seat, player }) => (
-          <div key={seat} style={styles.seatBox}>
-            <div style={styles.seatLabel}>
-              S{seat}
-            </div>
+        {seats.map(({ seat, player }) => {
+          const blockedTable = getBlockedTableForSeatPlayer(player);
 
-            <div
-              style={{
-                ...styles.seatId,
-                ...(player?.type === "INV"
-                  ? styles.invSeat
-                  : {}),
-                ...(player?.type === "PRO"
-                  ? styles.proSeat
-                  : {}),
-              }}
-            >
-              {player ? player.id : "-"}
+          return (
+            <div key={seat} style={styles.seatBox}>
+              <div style={styles.seatNumber}>
+                <span>S{seat}</span>
+
+                {blockedTable ? (
+                  <span style={styles.pairWarning}>{blockedTable}</span>
+                ) : null}
+              </div>
+
+              <div
+                style={{
+                  ...styles.seatId,
+                  ...(player?.type === "INV" ? styles.invSeat : {}),
+                  ...(player?.type === "PRO" ? styles.proSeat : {}),
+                }}
+              >
+                {player ? player.id : "-"}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -325,86 +608,79 @@ function PlayerList({
   toggleEliminated,
   getUnavailableTableForPlayer,
   getAvailableSeatsForPlayer,
+  styles,
 }) {
   return (
-    <div style={styles.listCard}>
-      <div style={styles.listTitle}>
+    <section style={styles.listCard}>
+      <h2
+        style={{
+          ...styles.sectionTitle,
+          ...(title === "INV" ? styles.invTitle : styles.proTitle),
+        }}
+      >
         {title}
+      </h2>
+
+      <div style={styles.playerHeader}>
+        <div>ID</div>
+        <div>NO</div>
+        <div>T</div>
+        <div>S</div>
+        <div>OUT</div>
       </div>
 
       {players.map((player) => {
-        const blockedTable =
-          getUnavailableTableForPlayer(player.id);
+        const blockedTable = getUnavailableTableForPlayer(player.id);
+        const availableSeats = getAvailableSeatsForPlayer(player);
 
-        const availableSeats =
-          getAvailableSeatsForPlayer(player);
+        const tableOptions = allowedTables.filter((table) => {
+          if (Number(table) === Number(blockedTable)) return false;
 
-        const tableOptions = allowedTables.filter(
-          (table) => {
-            if (
-              Number(table) === Number(blockedTable)
-            )
-              return false;
+          if (Number(player.table) === Number(table)) return true;
 
-            if (
-              Number(player.table) === Number(table)
-            )
-              return true;
-
-            const hasFreeSeat = SEATS.some(
-              (seat) => {
-                const occupied =
-                  allPlayers.some(
-                    (p) =>
-                      p.id !== player.id &&
-                      Number(p.table) ===
-                        Number(table) &&
-                      Number(p.seat) ===
-                        Number(seat) &&
-                      !p.eliminated
-                  );
-
-                return !occupied;
-              }
+          const hasFreeSeat = SEATS.some((seat) => {
+            const occupiedBySomeoneElse = allPlayers.some(
+              (p) =>
+                p.id !== player.id &&
+                Number(p.table) === Number(table) &&
+                Number(p.seat) === Number(seat) &&
+                !p.eliminated
             );
 
-            return hasFreeSeat;
-          }
-        );
+            return !occupiedBySomeoneElse;
+          });
+
+          return hasFreeSeat;
+        });
 
         return (
           <div
             key={player.id}
-            style={styles.playerRow}
+            style={{
+              ...styles.playerRow,
+              ...(player.eliminated ? styles.eliminatedRow : {}),
+            }}
           >
-            <div style={styles.idCell}>
-              {player.id}
-            </div>
+            <div style={styles.idCell}>{player.id}</div>
 
             <div style={styles.noCell}>
-              {blockedTable
-                ? `T${blockedTable}`
-                : "OK"}
+              {blockedTable ? (
+                <span style={styles.blockedTable}>T {blockedTable}</span>
+              ) : (
+                <span style={styles.okTable}>OK</span>
+              )}
             </div>
 
             <select
               value={player.table}
-              onChange={(e) =>
-                updateTable(
-                  title,
-                  player.id,
-                  e.target.value
-                )
-              }
-              style={styles.select}
+              disabled={player.eliminated}
+              onChange={(e) => updateTable(title, player.id, e.target.value)}
+              style={styles.tableSelect}
             >
               <option value="">-</option>
 
               {tableOptions.map((table) => (
-                <option
-                  key={table}
-                  value={table}
-                >
+                <option key={table} value={table}>
                   {table}
                 </option>
               ))}
@@ -412,22 +688,14 @@ function PlayerList({
 
             <select
               value={player.seat}
-              onChange={(e) =>
-                updateSeat(
-                  title,
-                  player.id,
-                  e.target.value
-                )
-              }
-              style={styles.select}
+              disabled={player.eliminated || !player.table}
+              onChange={(e) => updateSeat(title, player.id, e.target.value)}
+              style={styles.seatSelect}
             >
               <option value="">-</option>
 
               {availableSeats.map((seat) => (
-                <option
-                  key={seat}
-                  value={seat}
-                >
+                <option key={seat} value={seat}>
                   {seat}
                 </option>
               ))}
@@ -436,172 +704,394 @@ function PlayerList({
             <input
               type="checkbox"
               checked={player.eliminated}
-              onChange={() =>
-                toggleEliminated(title, player.id)
-              }
+              onChange={() => toggleEliminated(title, player.id)}
+              style={styles.checkbox}
             />
           </div>
         );
       })}
-    </div>
+    </section>
   );
 }
 
-const styles = {
-  page: {
-    background: "#e5e7eb",
-    minHeight: "100vh",
-    padding: 8,
-    fontFamily: "Arial",
-  },
+function makeStyles(screen) {
+  const overviewWidth = Math.max(170, Math.min(300, Math.round(screen.width * 0.24)));
 
-  header: {
-    textAlign: "center",
-    marginBottom: 10,
-  },
+  const invProColumnWidth = 186;
+  const listsGap = 6;
+  const listsWidth = invProColumnWidth * 2 + listsGap;
 
-  logo: {
-    height: 60,
-    objectFit: "contain",
-  },
+  return {
+    page: {
+      minHeight: "100vh",
+      background: "#e5e7eb",
+      padding: 6,
+      boxSizing: "border-box",
+      fontFamily: "Arial, Helvetica, sans-serif",
+      overflowX: "auto",
+    },
 
-  counterRow: {
-    display: "flex",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: 6,
-  },
+    app: {
+      width: overviewWidth + listsWidth + 34,
+      minWidth: overviewWidth + listsWidth + 34,
+      maxWidth: "none",
+      margin: "0 auto",
+      background: "white",
+      borderRadius: 12,
+      padding: 8,
+      boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
+    },
 
-  totalBox: {
-    background: "white",
-    padding: "6px 10px",
-    borderRadius: 8,
-    fontWeight: 900,
-  },
+    header: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 6,
+      marginBottom: 8,
+    },
 
-  invBox: {
-    background: "#fef3c7",
-    padding: "6px 10px",
-    borderRadius: 8,
-    fontWeight: 900,
-  },
+    logoBox: {
+      textAlign: "center",
+      flex: 1,
+    },
 
-  proBox: {
-    background: "#dbeafe",
-    padding: "6px 10px",
-    borderRadius: 8,
-    fontWeight: 900,
-  },
+    logo: {
+      height: 50,
+      maxWidth: 170,
+      objectFit: "contain",
+    },
 
-  main: {
-    display: "flex",
-    gap: 8,
-    alignItems: "flex-start",
-  },
+    title: {
+      margin: 0,
+      fontSize: 14,
+      fontWeight: 900,
+      color: "#111827",
+    },
 
-  tablesColumn: {
-    width: 220,
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-  },
+    countBox: {
+      display: "flex",
+      alignItems: "center",
+      gap: 4,
+    },
 
-  listArea: {
-    display: "flex",
-    gap: 8,
-    overflowY: "auto",
-    maxHeight: "85vh",
-  },
+    countCardTotal: {
+      border: "2px solid #111827",
+      borderRadius: 7,
+      minWidth: 42,
+      padding: 2,
+      textAlign: "center",
+      background: "#f8fafc",
+    },
 
-  listCard: {
-    width: 180,
-    background: "white",
-    borderRadius: 10,
-    padding: 4,
-  },
+    countCardInv: {
+      border: "2px solid #d6b94c",
+      borderRadius: 7,
+      minWidth: 42,
+      padding: 2,
+      textAlign: "center",
+      background: "#fef3c7",
+    },
 
-  listTitle: {
-    textAlign: "center",
-    fontWeight: 900,
-    marginBottom: 4,
-  },
+    countCardPro: {
+      border: "2px solid #93c5fd",
+      borderRadius: 7,
+      minWidth: 42,
+      padding: 2,
+      textAlign: "center",
+      background: "#dbeafe",
+    },
 
-  playerRow: {
-    display: "grid",
-    gridTemplateColumns:
-      "28px 38px 42px 42px 20px",
-    gap: 2,
-    marginBottom: 2,
-    alignItems: "center",
-  },
+    countLabel: {
+      fontSize: 7,
+      fontWeight: 900,
+      color: "#475569",
+    },
 
-  idCell: {
-    background: "white",
-    borderRadius: 4,
-    textAlign: "center",
-    fontWeight: 900,
-    fontSize: 10,
-  },
+    countValue: {
+      fontSize: 15,
+      fontWeight: 900,
+      color: "#111827",
+    },
 
-  noCell: {
-    background: "#fee2e2",
-    borderRadius: 4,
-    textAlign: "center",
-    fontWeight: 900,
-    fontSize: 9,
-  },
+    undoButton: {
+      border: "2px solid #475569",
+      background: "#64748b",
+      color: "white",
+      fontWeight: 900,
+      borderRadius: 7,
+      padding: "6px 6px",
+      fontSize: 9,
+      cursor: "pointer",
+    },
 
-  select: {
-    width: "100%",
-    height: 22,
-    borderRadius: 4,
-    fontWeight: 900,
-  },
+    breakButton: {
+      border: "2px solid #b91c1c",
+      background: "#ef4444",
+      color: "white",
+      fontWeight: 900,
+      borderRadius: 7,
+      padding: "6px 6px",
+      fontSize: 9,
+      cursor: "pointer",
+    },
 
-  tableCard: {
-    background: "white",
-    borderRadius: 8,
-    overflow: "hidden",
-  },
+    mainGrid: {
+      display: "grid",
+      gridTemplateColumns: `${overviewWidth}px ${listsWidth}px`,
+      gap: 8,
+      alignItems: "start",
+    },
 
-  tableTitle: {
-    background: "#111827",
-    color: "white",
-    textAlign: "center",
-    fontWeight: 900,
-    padding: 2,
-  },
+    tableOverview: {
+      border: "2px solid #111827",
+      borderRadius: 10,
+      padding: 5,
+      background: "#f8fafc",
+      width: overviewWidth,
+      boxSizing: "border-box",
+      maxHeight: "calc(100vh - 100px)",
+      overflowY: "auto",
+    },
 
-  seatGrid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(4, 1fr)",
-    gap: 2,
-    padding: 2,
-  },
+    overviewHeader: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 4,
+      marginBottom: 5,
+      position: "sticky",
+      top: 0,
+      background: "#f8fafc",
+      zIndex: 5,
+      paddingBottom: 3,
+    },
 
-  seatBox: {
-    border: "1px solid #cbd5e1",
-    borderRadius: 4,
-  },
+    overviewLabel: {
+      fontSize: 8,
+      fontWeight: 900,
+      color: "#111827",
+    },
 
-  seatLabel: {
-    textAlign: "center",
-    fontSize: 8,
-    background: "#e2e8f0",
-  },
+    overviewSelect: {
+      display: "block",
+      marginTop: 1,
+      padding: 2,
+      fontSize: 10,
+      fontWeight: 900,
+      borderRadius: 5,
+      border: "1px solid #94a3b8",
+      background: "white",
+      color: "#000",
+      width: 48,
+    },
 
-  seatId: {
-    textAlign: "center",
-    fontWeight: 900,
-    minHeight: 16,
-  },
+    playerLists: {
+      width: listsWidth,
+      minHeight: 0,
+    },
 
-  invSeat: {
-    background: "#fef3c7",
-  },
+    sharedScrollArea: {
+      maxHeight: "calc(100vh - 100px)",
+      overflowY: "auto",
+      borderRadius: 10,
+    },
 
-  proSeat: {
-    background: "#dbeafe",
-  },
-};
+    playerListsInner: {
+      display: "grid",
+      gridTemplateColumns: `${invProColumnWidth}px ${invProColumnWidth}px`,
+      gap: listsGap,
+      alignItems: "start",
+    },
+
+    sectionTitle: {
+      margin: 0,
+      textAlign: "center",
+      fontSize: 11,
+      fontWeight: 900,
+      color: "#111827",
+    },
+
+    invTitle: {
+      color: "#b45309",
+    },
+
+    proTitle: {
+      color: "#1d4ed8",
+    },
+
+    tablesGrid: {
+      display: "grid",
+      gridTemplateColumns: "1fr",
+      gap: 4,
+      alignItems: "start",
+    },
+
+    tableCard: {
+      border: "1px solid #334155",
+      borderRadius: 6,
+      overflow: "hidden",
+      background: "white",
+      width: "100%",
+      boxSizing: "border-box",
+    },
+
+    tableCardTitle: {
+      background: "#111827",
+      color: "white",
+      fontWeight: 900,
+      textAlign: "center",
+      padding: "2px 0",
+      fontSize: 10,
+    },
+
+    seatGrid: {
+      display: "grid",
+      gridTemplateColumns: "repeat(4, 1fr)",
+      gap: 1,
+      padding: 2,
+      background: "#cbd5e1",
+    },
+
+    seatBox: {
+      background: "white",
+      borderRadius: 4,
+      overflow: "hidden",
+      border: "1px solid #94a3b8",
+    },
+
+    seatNumber: {
+      background: "#e2e8f0",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      fontSize: 7,
+      fontWeight: 900,
+      color: "#334155",
+      padding: "0 1px",
+    },
+
+    pairWarning: {
+      color: "#dc2626",
+      fontWeight: 900,
+      fontSize: 7,
+    },
+
+    seatId: {
+      minHeight: 14,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: 9,
+      fontWeight: 900,
+      color: "#111827",
+    },
+
+    invSeat: {
+      background: "#fef3c7",
+    },
+
+    proSeat: {
+      background: "#dbeafe",
+    },
+
+    listCard: {
+      border: "2px solid #111827",
+      borderRadius: 9,
+      padding: 3,
+      background: "#f8fafc",
+      width: invProColumnWidth,
+      boxSizing: "border-box",
+    },
+
+    playerHeader: {
+      display: "grid",
+      gridTemplateColumns: "25px 34px 39px 39px 24px",
+      gap: 2,
+      background: "#334155",
+      color: "white",
+      fontSize: 8,
+      fontWeight: 900,
+      textAlign: "center",
+      padding: 2,
+      borderRadius: 5,
+      marginBottom: 2,
+      position: "sticky",
+      top: 0,
+      zIndex: 3,
+    },
+
+    playerRow: {
+      display: "grid",
+      gridTemplateColumns: "25px 34px 39px 39px 24px",
+      gap: 2,
+      background: "#cbd5e1",
+      padding: 2,
+      borderRadius: 5,
+      marginBottom: 2,
+      alignItems: "center",
+    },
+
+    eliminatedRow: {
+      opacity: 0.45,
+    },
+
+    idCell: {
+      background: "white",
+      borderRadius: 4,
+      textAlign: "center",
+      fontSize: 9,
+      fontWeight: 900,
+      padding: "3px 0",
+    },
+
+    noCell: {
+      background: "white",
+      borderRadius: 4,
+      textAlign: "center",
+      fontSize: 7,
+      fontWeight: 900,
+      padding: "3px 0",
+    },
+
+    blockedTable: {
+      background: "#ef4444",
+      color: "white",
+      padding: "1px 2px",
+      borderRadius: 4,
+    },
+
+    okTable: {
+      color: "#15803d",
+    },
+
+    tableSelect: {
+      width: "100%",
+      minHeight: 20,
+      borderRadius: 4,
+      border: "1px solid #94a3b8",
+      background: "white",
+      color: "#000",
+      fontWeight: 900,
+      textAlign: "center",
+      fontSize: 10,
+    },
+
+    seatSelect: {
+      width: "100%",
+      minHeight: 20,
+      borderRadius: 4,
+      border: "1px solid #d6b94c",
+      background: "#fef3c7",
+      color: "#000",
+      fontWeight: 900,
+      textAlign: "center",
+      fontSize: 10,
+    },
+
+    checkbox: {
+      width: 15,
+      height: 15,
+      margin: "0 auto",
+    },
+  };
+}
