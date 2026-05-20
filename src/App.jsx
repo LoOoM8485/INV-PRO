@@ -24,6 +24,23 @@ function createInitialState() {
     pro: PRO_IDS.map((id) => emptyPlayer(id, "PRO")),
     visibleMaxTable: 15,
     lastBreakSnapshot: null,
+    customBlocks: [
+      { a: "", b: "" },
+      { a: "", b: "" },
+      { a: "", b: "" },
+    ],
+  };
+}
+
+function mergeSavedState(data) {
+  const base = createInitialState();
+
+  return {
+    ...base,
+    ...data,
+    inv: data?.inv || base.inv,
+    pro: data?.pro || base.pro,
+    customBlocks: data?.customBlocks || base.customBlocks,
   };
 }
 
@@ -70,6 +87,37 @@ function useScreenSize() {
   return size;
 }
 
+function getBlockedIdsForPlayer(id, customBlocks) {
+  const blocked = new Set([getPairId(id)]);
+
+  customBlocks.forEach((block) => {
+    const a = Number(block.a);
+    const b = Number(block.b);
+
+    if (!a || !b) return;
+
+    if (Number(id) === a) blocked.add(b);
+    if (Number(id) === b) blocked.add(a);
+  });
+
+  return Array.from(blocked);
+}
+
+function getBlockedTablesForPlayer(id, playerById, customBlocks) {
+  const blockedIds = getBlockedIdsForPlayer(id, customBlocks);
+  const tables = [];
+
+  blockedIds.forEach((blockedId) => {
+    const player = playerById.get(Number(blockedId));
+
+    if (player && playerHasSeat(player)) {
+      tables.push(Number(player.table));
+    }
+  });
+
+  return Array.from(new Set(tables)).sort((a, b) => a - b);
+}
+
 export default function App() {
   const [state, setState] = useState(createInitialState());
   const [loaded, setLoaded] = useState(false);
@@ -90,11 +138,7 @@ export default function App() {
 
       return onSnapshot(DOC_REF, (snapshot) => {
         if (snapshot.exists()) {
-          const firebaseData = {
-            ...createInitialState(),
-            ...snapshot.data(),
-          };
-
+          const firebaseData = mergeSavedState(snapshot.data());
           setState(firebaseData);
           setLoaded(true);
         }
@@ -130,6 +174,10 @@ export default function App() {
   const livePlayers = allPlayers.filter(playerHasSeat);
   const invLive = state.inv.filter(playerHasSeat).length;
   const proLive = state.pro.filter(playerHasSeat).length;
+
+  const inPlayIds = livePlayers
+    .map((player) => player.id)
+    .sort((a, b) => a - b);
 
   const playerById = useMemo(() => {
     const map = new Map();
@@ -203,10 +251,12 @@ export default function App() {
     });
   }
 
-  function getUnavailableTableForPlayer(id) {
-    const pair = playerById.get(getPairId(id));
-    if (!pair || !playerHasSeat(pair)) return "";
-    return pair.table;
+  function getUnavailableTablesForPlayer(id) {
+    return getBlockedTablesForPlayer(
+      id,
+      playerById,
+      state.customBlocks || []
+    );
   }
 
   function getAvailableSeatsForPlayer(player) {
@@ -226,6 +276,26 @@ export default function App() {
     });
   }
 
+  function updateCustomBlock(index, field, value) {
+    const current = latestStateRef.current;
+    const blocks = [...(current.customBlocks || createInitialState().customBlocks)];
+
+    blocks[index] = {
+      ...blocks[index],
+      [field]: value,
+    };
+
+    if (blocks[index].a && blocks[index].b && blocks[index].a === blocks[index].b) {
+      alert("A player cannot be blocked with themselves.");
+      return;
+    }
+
+    saveState({
+      ...current,
+      customBlocks: blocks,
+    });
+  }
+
   function undoBreak() {
     if (!state.lastBreakSnapshot) {
       alert("No table break to undo.");
@@ -240,42 +310,98 @@ export default function App() {
     });
   }
 
+  function rotateTable(table) {
+    if (!window.confirm(`Confirm rotation of Table ${table}?`)) return;
+
+    const current = latestStateRef.current;
+    const currentAllPlayers = [...current.inv, ...current.pro];
+
+    const seatOccupants = new Map();
+
+    currentAllPlayers.forEach((player) => {
+      if (
+        Number(player.table) === Number(table) &&
+        player.seat !== "" &&
+        !player.eliminated
+      ) {
+        seatOccupants.set(Number(player.seat), player.id);
+      }
+    });
+
+    if (seatOccupants.size === 0) {
+      alert(`Table ${table} has no players to rotate.`);
+      return;
+    }
+
+    const newSeatByPlayerId = new Map();
+
+    SEATS.forEach((seat, index) => {
+      const previousSeat = SEATS[index - 1] || SEATS[SEATS.length - 1];
+      const playerIdFromPreviousSeat = seatOccupants.get(previousSeat);
+
+      if (playerIdFromPreviousSeat) {
+        newSeatByPlayerId.set(playerIdFromPreviousSeat, String(seat));
+      }
+    });
+
+    const newState = {
+      ...current,
+      inv: current.inv.map((player) =>
+        newSeatByPlayerId.has(player.id)
+          ? { ...player, seat: newSeatByPlayerId.get(player.id) }
+          : player
+      ),
+      pro: current.pro.map((player) =>
+        newSeatByPlayerId.has(player.id)
+          ? { ...player, seat: newSeatByPlayerId.get(player.id) }
+          : player
+      ),
+    };
+
+    saveState(newState);
+  }
+
   function findRandomBreakAssignments({
     breakingPlayers,
     lowerTables,
     currentOccupied,
     playerById,
     breakingTable,
+    customBlocks,
   }) {
     const breakingIds = new Set(breakingPlayers.map((p) => p.id));
 
-    function getPairTable(player, assignments) {
-      const pairId = getPairId(player.id);
+    function getBlockedTables(player, assignments) {
+      const blockedIds = getBlockedIdsForPlayer(player.id, customBlocks);
+      const blockedTables = [];
 
-      if (assignments.has(pairId)) {
-        return Number(assignments.get(pairId).table);
-      }
+      blockedIds.forEach((blockedId) => {
+        if (assignments.has(Number(blockedId))) {
+          blockedTables.push(Number(assignments.get(Number(blockedId)).table));
+          return;
+        }
 
-      const pair = playerById.get(pairId);
+        const blockedPlayer = playerById.get(Number(blockedId));
 
-      if (
-        pair &&
-        playerHasSeat(pair) &&
-        !breakingIds.has(pair.id) &&
-        Number(pair.table) !== Number(breakingTable)
-      ) {
-        return Number(pair.table);
-      }
+        if (
+          blockedPlayer &&
+          playerHasSeat(blockedPlayer) &&
+          !breakingIds.has(blockedPlayer.id) &&
+          Number(blockedPlayer.table) !== Number(breakingTable)
+        ) {
+          blockedTables.push(Number(blockedPlayer.table));
+        }
+      });
 
-      return "";
+      return new Set(blockedTables);
     }
 
     function getCandidates(player, occupied, assignments) {
-      const blockedTable = getPairTable(player, assignments);
+      const blockedTables = getBlockedTables(player, assignments);
       const candidates = [];
 
       for (const table of cryptoShuffle(lowerTables)) {
-        if (Number(table) === Number(blockedTable)) continue;
+        if (blockedTables.has(Number(table))) continue;
 
         for (const seat of cryptoShuffle(SEATS)) {
           const key = `${table}-${seat}`;
@@ -383,6 +509,7 @@ export default function App() {
       currentOccupied,
       playerById: currentPlayerById,
       breakingTable: highestTableInPlay,
+      customBlocks: current.customBlocks || [],
     });
 
     if (!assignments) {
@@ -441,29 +568,59 @@ export default function App() {
             <h1 style={styles.title}>INV / PRO TABLE PLANNER</h1>
           </div>
 
-          <div style={styles.countBox}>
-            <button onClick={undoBreak} style={styles.undoButton}>
-              UNDO
-            </button>
+          <div style={styles.topMenu}>
+            <div style={styles.customBlocksBox}>
+              <div style={styles.customBlocksTitle}>EXTRA BLOCKS</div>
 
-            <div style={styles.countCardTotal}>
-              <div style={styles.countLabel}>TOTAL</div>
-              <div style={styles.countValue}>{livePlayers.length}</div>
+              {(state.customBlocks || createInitialState().customBlocks).map(
+                (block, index) => (
+                  <div key={index} style={styles.customBlockRow}>
+                    <PlayerSelect
+                      value={block.a}
+                      otherValue={block.b}
+                      inPlayIds={inPlayIds}
+                      onChange={(value) => updateCustomBlock(index, "a", value)}
+                      styles={styles}
+                    />
+
+                    <span style={styles.vsText}>×</span>
+
+                    <PlayerSelect
+                      value={block.b}
+                      otherValue={block.a}
+                      inPlayIds={inPlayIds}
+                      onChange={(value) => updateCustomBlock(index, "b", value)}
+                      styles={styles}
+                    />
+                  </div>
+                )
+              )}
             </div>
 
-            <div style={styles.countCardInv}>
-              <div style={styles.countLabel}>INV</div>
-              <div style={styles.countValue}>{invLive}</div>
-            </div>
+            <div style={styles.countBox}>
+              <button onClick={undoBreak} style={styles.undoButton}>
+                UNDO
+              </button>
 
-            <div style={styles.countCardPro}>
-              <div style={styles.countLabel}>PRO</div>
-              <div style={styles.countValue}>{proLive}</div>
-            </div>
+              <div style={styles.countCardTotal}>
+                <div style={styles.countLabel}>TOTAL</div>
+                <div style={styles.countValue}>{livePlayers.length}</div>
+              </div>
 
-            <button onClick={breakTable} style={styles.breakButton}>
-              BREAK {highestTableInPlay ? `T${highestTableInPlay}` : ""}
-            </button>
+              <div style={styles.countCardInv}>
+                <div style={styles.countLabel}>INV</div>
+                <div style={styles.countValue}>{invLive}</div>
+              </div>
+
+              <div style={styles.countCardPro}>
+                <div style={styles.countLabel}>PRO</div>
+                <div style={styles.countValue}>{proLive}</div>
+              </div>
+
+              <button onClick={breakTable} style={styles.breakButton}>
+                BREAK {highestTableInPlay ? `T${highestTableInPlay}` : ""}
+              </button>
+            </div>
           </div>
         </header>
 
@@ -494,6 +651,9 @@ export default function App() {
                   key={table}
                   table={table}
                   allPlayers={allPlayers}
+                  playerById={playerById}
+                  customBlocks={state.customBlocks || []}
+                  onRotate={rotateTable}
                   styles={styles}
                 />
               ))}
@@ -511,7 +671,7 @@ export default function App() {
                   updateTable={setPlayerTable}
                   updateSeat={setPlayerSeat}
                   toggleEliminated={toggleEliminated}
-                  getUnavailableTableForPlayer={getUnavailableTableForPlayer}
+                  getUnavailableTablesForPlayer={getUnavailableTablesForPlayer}
                   getAvailableSeatsForPlayer={getAvailableSeatsForPlayer}
                   styles={styles}
                 />
@@ -524,7 +684,7 @@ export default function App() {
                   updateTable={setPlayerTable}
                   updateSeat={setPlayerSeat}
                   toggleEliminated={toggleEliminated}
-                  getUnavailableTableForPlayer={getUnavailableTableForPlayer}
+                  getUnavailableTablesForPlayer={getUnavailableTablesForPlayer}
                   getAvailableSeatsForPlayer={getAvailableSeatsForPlayer}
                   styles={styles}
                 />
@@ -537,20 +697,46 @@ export default function App() {
   );
 }
 
-function TableCard({ table, allPlayers, styles }) {
-  function getBlockedTableForSeatPlayer(player) {
-    if (!player) return "";
+function PlayerSelect({ value, otherValue, inPlayIds, onChange, styles }) {
+  const options = Array.from(
+    new Set([
+      ...inPlayIds,
+      value ? Number(value) : null,
+      otherValue ? Number(otherValue) : null,
+    ].filter(Boolean))
+  ).sort((a, b) => a - b);
 
-    const pairId = getPairId(player.id);
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={styles.customSelect}
+    >
+      <option value="">-</option>
 
-    const pair = allPlayers.find(
-      (p) => p.id === pairId && p.table !== "" && p.seat !== "" && !p.eliminated
-    );
+      {options.map((id) => (
+        <option key={id} value={id}>
+          {id}
+        </option>
+      ))}
+    </select>
+  );
+}
 
-    if (!pair) return "";
-
-    return pair.table;
-  }
+function TableCard({
+  table,
+  allPlayers,
+  playerById,
+  customBlocks,
+  onRotate,
+  styles,
+}) {
+  const tableHasPlayers = allPlayers.some(
+    (player) =>
+      Number(player.table) === Number(table) &&
+      player.seat !== "" &&
+      !player.eliminated
+  );
 
   const seats = SEATS.map((seat) => {
     const player = allPlayers.find(
@@ -565,19 +751,29 @@ function TableCard({ table, allPlayers, styles }) {
 
   return (
     <div style={styles.tableCard}>
-      <div style={styles.tableCardTitle}>T{table}</div>
+      <div style={styles.tableCardTitle}>
+        <span>T{table}</span>
+
+        {tableHasPlayers ? (
+          <button onClick={() => onRotate(table)} style={styles.rotateButton}>
+            ROT
+          </button>
+        ) : null}
+      </div>
 
       <div style={styles.seatGrid}>
         {seats.map(({ seat, player }) => {
-          const blockedTable = getBlockedTableForSeatPlayer(player);
+          const blockedTables = player
+            ? getBlockedTablesForPlayer(player.id, playerById, customBlocks)
+            : [];
 
           return (
             <div key={seat} style={styles.seatBox}>
               <div style={styles.seatNumber}>
                 <span>S{seat}</span>
 
-                {blockedTable ? (
-                  <span style={styles.pairWarning}>{blockedTable}</span>
+                {blockedTables.length > 0 ? (
+                  <span style={styles.pairWarning}>{blockedTables.join(",")}</span>
                 ) : null}
               </div>
 
@@ -606,7 +802,7 @@ function PlayerList({
   updateTable,
   updateSeat,
   toggleEliminated,
-  getUnavailableTableForPlayer,
+  getUnavailableTablesForPlayer,
   getAvailableSeatsForPlayer,
   styles,
 }) {
@@ -630,11 +826,11 @@ function PlayerList({
       </div>
 
       {players.map((player) => {
-        const blockedTable = getUnavailableTableForPlayer(player.id);
+        const blockedTables = getUnavailableTablesForPlayer(player.id);
         const availableSeats = getAvailableSeatsForPlayer(player);
 
         const tableOptions = allowedTables.filter((table) => {
-          if (Number(table) === Number(blockedTable)) return false;
+          if (blockedTables.includes(Number(table))) return false;
 
           if (Number(player.table) === Number(table)) return true;
 
@@ -664,8 +860,10 @@ function PlayerList({
             <div style={styles.idCell}>{player.id}</div>
 
             <div style={styles.noCell}>
-              {blockedTable ? (
-                <span style={styles.blockedTable}>T {blockedTable}</span>
+              {blockedTables.length > 0 ? (
+                <span style={styles.blockedTable}>
+                  {blockedTables.map((table) => `T${table}`).join(" ")}
+                </span>
               ) : (
                 <span style={styles.okTable}>OK</span>
               )}
@@ -766,6 +964,47 @@ function makeStyles(screen) {
       fontSize: 14,
       fontWeight: 900,
       color: "#111827",
+    },
+
+    topMenu: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+    },
+
+    customBlocksBox: {
+      border: "2px solid #111827",
+      borderRadius: 7,
+      padding: 3,
+      background: "#f8fafc",
+    },
+
+    customBlocksTitle: {
+      fontSize: 7,
+      fontWeight: 900,
+      textAlign: "center",
+      marginBottom: 2,
+    },
+
+    customBlockRow: {
+      display: "flex",
+      alignItems: "center",
+      gap: 2,
+      marginBottom: 2,
+    },
+
+    customSelect: {
+      width: 42,
+      height: 18,
+      fontSize: 9,
+      fontWeight: 900,
+      borderRadius: 4,
+      border: "1px solid #94a3b8",
+    },
+
+    vsText: {
+      fontSize: 9,
+      fontWeight: 900,
     },
 
     countBox: {
@@ -940,8 +1179,21 @@ function makeStyles(screen) {
       color: "white",
       fontWeight: 900,
       textAlign: "center",
-      padding: "2px 0",
+      padding: "2px 3px",
       fontSize: 10,
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+
+    rotateButton: {
+      background: "#facc15",
+      border: "0",
+      borderRadius: 4,
+      fontSize: 7,
+      fontWeight: 900,
+      padding: "1px 3px",
+      cursor: "pointer",
     },
 
     seatGrid: {
