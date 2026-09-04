@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import './fullscreen.css'
 import App from './App.jsx'
 
 function FullscreenControl() {
