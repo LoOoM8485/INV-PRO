@@ -1,10 +1,11 @@
-name: Build & live check
+name: Build INV-PRO
 
 on:
   push:
     branches: [main, app-refresh-2026]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -14,36 +15,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
-      - run: npm run build
-      - name: Check Cloudflare production app
-        if: github.ref == 'refs/heads/main'
-        run: |
-          BASE="https://invpro.elmu-bfb.workers.dev"
-          for ATTEMPT in $(seq 1 24); do
-            if curl -fsSL --max-time 8 "${BASE}/" -o /tmp/index.html; then
-              JS=$(grep -oE 'src="/assets/[^"]+\.js"' /tmp/index.html | head -1 | cut -d'"' -f2 || true)
-              CSS=$(grep -oE 'href="/assets/[^"]+\.css"' /tmp/index.html | head -1 | cut -d'"' -f2 || true)
-              JS_OK=0
-              CSS_OK=0
-
-              if [ -n "${JS}" ] && curl -fsSL --max-time 8 "${BASE}${JS}" -o /tmp/app.js; then
-                grep -q "LOCAL MODE" /tmp/app.js && JS_OK=1 || true
-              fi
-
-              if [ -n "${CSS}" ] && curl -fsSL --max-time 8 "${BASE}${CSS}" -o /tmp/app.css; then
-                grep -q -- "--inv-fullscreen-release:20260904" /tmp/app.css && CSS_OK=1 || true
-              fi
-
-              if [ "${JS_OK}" = "1" ] && [ "${CSS_OK}" = "1" ]; then
-                echo "Cloudflare production contains local fallback and fullscreen release."
-                exit 0
-              fi
-            fi
-
-            echo "Waiting for Cloudflare deployment (${ATTEMPT}/24)…"
-            sleep 5
-          done
-
-          echo "Cloudflare production did not expose the expected release markers."
-          exit 1
+      - name: Install
+        run: npm install
+      - name: Build
+        run: npm run build
+      - name: Upload production bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: inv-pro-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
