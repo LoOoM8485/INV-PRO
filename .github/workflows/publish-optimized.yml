@@ -1,0 +1,37 @@
+name: Publish optimized INV-PRO
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm install
+      - name: Build optimized app
+        run: npm run build
+      - name: Prepare static branch
+        run: |
+          rm -rf /tmp/inv-pro-public
+          mkdir -p /tmp/inv-pro-public
+          cp -R dist/. /tmp/inv-pro-public/
+      - name: Publish public-optimized branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan public-optimized
+          git rm -rf . || true
+          cp -R /tmp/inv-pro-public/. .
+          git add -f .
+          git commit -m "Publish optimized INV-PRO"
+          git push --force origin HEAD:public-optimized
