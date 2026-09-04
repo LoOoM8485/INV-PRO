@@ -128,39 +128,147 @@ export default function App() {
     latestStateRef.current = state;
   }, [state]);
 
-  useEffect(() => {
-    async function initFirebase() {
+  function setSyncBadge(mode) {
+  let badge = document.getElementById("sync-mode-badge");
+
+  if (!badge) {
+    badge = document.createElement("div");
+    badge.id = "sync-mode-badge";
+    document.body.appendChild(badge);
+    Object.assign(badge.style, {
+      position: "fixed",
+      right: "12px",
+      bottom: "12px",
+      zIndex: "9999",
+      padding: "7px 10px",
+      borderRadius: "999px",
+      border: "1px solid rgba(255,255,255,.18)",
+      background: "rgba(7,9,13,.92)",
+      backdropFilter: "blur(10px)",
+      boxShadow: "0 8px 24px rgba(0,0,0,.32)",
+      fontFamily: "system-ui, sans-serif",
+      fontSize: "9px",
+      fontWeight: "900",
+      letterSpacing: ".08em",
+      pointerEvents: "none",
+    });
+  }
+
+  badge.dataset.mode = mode;
+  badge.textContent =
+    mode === "live"
+      ? "● LIVE SYNC"
+      : mode === "local"
+      ? "● LOCAL MODE"
+      : "● CONNECTING";
+  badge.style.color =
+    mode === "live" ? "#86efac" : mode === "local" ? "#f0d98a" : "#cbd5e1";
+  badge.style.borderColor =
+    mode === "live"
+      ? "rgba(34,197,94,.45)"
+      : mode === "local"
+      ? "rgba(215,184,91,.45)"
+      : "rgba(148,163,184,.35)";
+}
+
+useEffect(() => {
+  let unsubscribe;
+  let cancelled = false;
+  let hasRemoteData = false;
+
+  function loadLocal() {
+    try {
+      const saved = localStorage.getItem("inv-pro-planner-state-v1");
+      const localState = saved
+        ? mergeSavedState(JSON.parse(saved))
+        : createInitialState();
+
+      if (!cancelled) {
+        latestStateRef.current = localState;
+        setState(localState);
+        setLoaded(true);
+        setSyncBadge("local");
+      }
+    } catch (error) {
+      console.warn("Local planner state could not be loaded.", error);
+      if (!cancelled) {
+        const fallback = createInitialState();
+        latestStateRef.current = fallback;
+        setState(fallback);
+        setLoaded(true);
+        setSyncBadge("local");
+      }
+    }
+  }
+
+  async function initFirebase() {
+    setSyncBadge("connecting");
+
+    try {
       const snap = await getDoc(DOC_REF);
 
       if (!snap.exists()) {
         await setDoc(DOC_REF, createInitialState());
       }
 
-      return onSnapshot(DOC_REF, (snapshot) => {
-        if (snapshot.exists()) {
-          const firebaseData = mergeSavedState(snapshot.data());
-          setState(firebaseData);
-          setLoaded(true);
+      unsubscribe = onSnapshot(
+        DOC_REF,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const firebaseData = mergeSavedState(snapshot.data());
+            hasRemoteData = true;
+            latestStateRef.current = firebaseData;
+            setState(firebaseData);
+            setLoaded(true);
+            setSyncBadge("live");
+
+            try {
+              localStorage.setItem(
+                "inv-pro-planner-state-v1",
+                JSON.stringify(firebaseData)
+              );
+            } catch {}
+          }
+        },
+        (error) => {
+          console.warn("Firebase sync unavailable; using local mode.", error);
+          if (!hasRemoteData) loadLocal();
+          else setSyncBadge("local");
         }
-      });
+      );
+    } catch (error) {
+      console.warn("Firebase unavailable; using local mode.", error);
+      loadLocal();
     }
-
-    let unsubscribe;
-
-    initFirebase().then((unsub) => {
-      unsubscribe = unsub;
-    });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
-
-  async function saveState(newState) {
-    latestStateRef.current = newState;
-    setState(newState);
-    await setDoc(DOC_REF, newState);
   }
+
+  initFirebase();
+
+  return () => {
+    cancelled = true;
+    if (unsubscribe) unsubscribe();
+  };
+}, []);
+
+async function saveState(newState) {
+  latestStateRef.current = newState;
+  setState(newState);
+
+  try {
+    localStorage.setItem(
+      "inv-pro-planner-state-v1",
+      JSON.stringify(newState)
+    );
+  } catch {}
+
+  try {
+    await setDoc(DOC_REF, newState);
+    setSyncBadge("live");
+  } catch (error) {
+    console.warn("Firebase write unavailable; saved locally instead.", error);
+    setSyncBadge("local");
+  }
+}
 
   const visibleTables = TABLES.filter(
     (table) => Number(table) <= Number(state.visibleMaxTable)
