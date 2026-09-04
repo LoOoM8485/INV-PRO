@@ -1,4 +1,4 @@
-name: Verify Cloudflare preview
+name: Verify final live app
 
 on:
   push:
@@ -8,10 +8,10 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Check refreshed branch preview
+      - name: Check final INV-PRO deployment
         run: |
-          BASE="https://cloudflare-workers-autoconfig-invpro.elmu-bfb.workers.dev"
-          for ATTEMPT in $(seq 1 18); do
+          BASE="https://triton-inv-pro-final-elmu-2020.vercel.app"
+          for ATTEMPT in $(seq 1 24); do
             if curl -fsSL --max-time 10 "${BASE}/" -o /tmp/index.html; then
               JS=$(grep -oE 'src="/assets/[^"]+\.js"' /tmp/index.html | head -1 | cut -d'"' -f2 || true)
               CSS=$(grep -oE 'href="/assets/[^"]+\.css"' /tmp/index.html | head -1 | cut -d'"' -f2 || true)
@@ -24,7 +24,7 @@ jobs:
                 grep -q -- "--inv-fullscreen-release:20260904" /tmp/app.css && CSS_OK=1 || true
               fi
               if [ "${JS_OK}" = "1" ] && [ "${CSS_OK}" = "1" ]; then
-                echo "Refreshed INV-PRO Cloudflare preview is live."
+                echo "Final INV-PRO deployment is live with fallback and fullscreen release."
                 exit 0
               fi
             fi
