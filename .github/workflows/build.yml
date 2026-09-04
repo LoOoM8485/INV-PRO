@@ -19,7 +19,23 @@ jobs:
       - run: npm run build
       - name: Check production app
         if: github.ref == 'refs/heads/main'
-        run: curl --fail --location --retry 12 --retry-delay 5 --retry-all-errors --max-time 20 https://triton-invitational-planner-elmu-2020.vercel.app/ -o /dev/null
+        run: |
+          BASE="https://triton-invitational-planner-elmu-2020.vercel.app"
+          for ATTEMPT in $(seq 1 12); do
+            if curl -fsSL --max-time 20 "${BASE}/" -o /tmp/index.html; then
+              JS=$(grep -oE 'src="/assets/[^"]+\.js"' /tmp/index.html | head -1 | cut -d'"' -f2 || true)
+              if [ -n "${JS}" ] && curl -fsSL --max-time 20 "${BASE}${JS}" -o /tmp/app.js; then
+                if grep -q "LOCAL MODE" /tmp/app.js; then
+                  echo "Production bundle contains Firebase fallback."
+                  exit 0
+                fi
+              fi
+            fi
+            echo "Waiting for refreshed deployment (${ATTEMPT}/12)…"
+            sleep 5
+          done
+          echo "Production bundle did not expose the expected fallback marker."
+          exit 1
       - name: Check Firebase planner access
         if: github.ref == 'refs/heads/main'
         run: |
