@@ -14,37 +14,36 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+      - run: npm install
       - run: npm run build
-      - name: Check production app
+      - name: Check Cloudflare production app
         if: github.ref == 'refs/heads/main'
         run: |
-          BASE="https://triton-invitational-planner-elmu-2020.vercel.app"
+          BASE="https://invpro.elmu-bfb.workers.dev"
           for ATTEMPT in $(seq 1 24); do
-            if curl -fsSL --max-time 20 "${BASE}/" -o /tmp/index.html; then
+            if curl -fsSL --max-time 8 "${BASE}/" -o /tmp/index.html; then
               JS=$(grep -oE 'src="/assets/[^"]+\.js"' /tmp/index.html | head -1 | cut -d'"' -f2 || true)
               CSS=$(grep -oE 'href="/assets/[^"]+\.css"' /tmp/index.html | head -1 | cut -d'"' -f2 || true)
               JS_OK=0
               CSS_OK=0
 
-              if [ -n "${JS}" ] && curl -fsSL --max-time 20 "${BASE}${JS}" -o /tmp/app.js; then
+              if [ -n "${JS}" ] && curl -fsSL --max-time 8 "${BASE}${JS}" -o /tmp/app.js; then
                 grep -q "LOCAL MODE" /tmp/app.js && JS_OK=1 || true
               fi
 
-              if [ -n "${CSS}" ] && curl -fsSL --max-time 20 "${BASE}${CSS}" -o /tmp/app.css; then
+              if [ -n "${CSS}" ] && curl -fsSL --max-time 8 "${BASE}${CSS}" -o /tmp/app.css; then
                 grep -q -- "--inv-fullscreen-release:20260904" /tmp/app.css && CSS_OK=1 || true
               fi
 
               if [ "${JS_OK}" = "1" ] && [ "${CSS_OK}" = "1" ]; then
-                echo "Production bundle contains Firebase fallback and fullscreen release."
+                echo "Cloudflare production contains local fallback and fullscreen release."
                 exit 0
               fi
             fi
 
-            echo "Waiting for refreshed deployment (${ATTEMPT}/24)…"
+            echo "Waiting for Cloudflare deployment (${ATTEMPT}/24)…"
             sleep 5
           done
 
-          echo "Production bundle did not expose the expected release markers."
+          echo "Cloudflare production did not expose the expected release markers."
           exit 1
