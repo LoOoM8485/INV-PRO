@@ -1,0 +1,181 @@
+name: Apply Firebase fallback
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Install resilient Firebase fallback'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Patch planner storage layer
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/App.jsx')
+          text = path.read_text()
+          start_marker = '  useEffect(() => {\n    async function initFirebase() {'
+          end_marker = '\n\n  const visibleTables ='
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+
+          replacement = r'''  function setSyncBadge(mode) {
+            let badge = document.getElementById("sync-mode-badge");
+
+            if (!badge) {
+              badge = document.createElement("div");
+              badge.id = "sync-mode-badge";
+              document.body.appendChild(badge);
+              Object.assign(badge.style, {
+                position: "fixed",
+                right: "12px",
+                bottom: "12px",
+                zIndex: "9999",
+                padding: "7px 10px",
+                borderRadius: "999px",
+                border: "1px solid rgba(255,255,255,.18)",
+                background: "rgba(7,9,13,.92)",
+                backdropFilter: "blur(10px)",
+                boxShadow: "0 8px 24px rgba(0,0,0,.32)",
+                fontFamily: "system-ui, sans-serif",
+                fontSize: "9px",
+                fontWeight: "900",
+                letterSpacing: ".08em",
+                pointerEvents: "none",
+              });
+            }
+
+            badge.dataset.mode = mode;
+            badge.textContent =
+              mode === "live"
+                ? "● LIVE SYNC"
+                : mode === "local"
+                ? "● LOCAL MODE"
+                : "● CONNECTING";
+            badge.style.color =
+              mode === "live" ? "#86efac" : mode === "local" ? "#f0d98a" : "#cbd5e1";
+            badge.style.borderColor =
+              mode === "live"
+                ? "rgba(34,197,94,.45)"
+                : mode === "local"
+                ? "rgba(215,184,91,.45)"
+                : "rgba(148,163,184,.35)";
+          }
+
+          useEffect(() => {
+            let unsubscribe;
+            let cancelled = false;
+            let hasRemoteData = false;
+
+            function loadLocal() {
+              try {
+                const saved = localStorage.getItem("inv-pro-planner-state-v1");
+                const localState = saved
+                  ? mergeSavedState(JSON.parse(saved))
+                  : createInitialState();
+
+                if (!cancelled) {
+                  latestStateRef.current = localState;
+                  setState(localState);
+                  setLoaded(true);
+                  setSyncBadge("local");
+                }
+              } catch (error) {
+                console.warn("Local planner state could not be loaded.", error);
+                if (!cancelled) {
+                  const fallback = createInitialState();
+                  latestStateRef.current = fallback;
+                  setState(fallback);
+                  setLoaded(true);
+                  setSyncBadge("local");
+                }
+              }
+            }
+
+            async function initFirebase() {
+              setSyncBadge("connecting");
+
+              try {
+                const snap = await getDoc(DOC_REF);
+
+                if (!snap.exists()) {
+                  await setDoc(DOC_REF, createInitialState());
+                }
+
+                unsubscribe = onSnapshot(
+                  DOC_REF,
+                  (snapshot) => {
+                    if (snapshot.exists()) {
+                      const firebaseData = mergeSavedState(snapshot.data());
+                      hasRemoteData = true;
+                      latestStateRef.current = firebaseData;
+                      setState(firebaseData);
+                      setLoaded(true);
+                      setSyncBadge("live");
+
+                      try {
+                        localStorage.setItem(
+                          "inv-pro-planner-state-v1",
+                          JSON.stringify(firebaseData)
+                        );
+                      } catch {}
+                    }
+                  },
+                  (error) => {
+                    console.warn("Firebase sync unavailable; using local mode.", error);
+                    if (!hasRemoteData) loadLocal();
+                    else setSyncBadge("local");
+                  }
+                );
+              } catch (error) {
+                console.warn("Firebase unavailable; using local mode.", error);
+                loadLocal();
+              }
+            }
+
+            initFirebase();
+
+            return () => {
+              cancelled = true;
+              if (unsubscribe) unsubscribe();
+            };
+          }, []);
+
+          async function saveState(newState) {
+            latestStateRef.current = newState;
+            setState(newState);
+
+            try {
+              localStorage.setItem(
+                "inv-pro-planner-state-v1",
+                JSON.stringify(newState)
+              );
+            } catch {}
+
+            try {
+              await setDoc(DOC_REF, newState);
+              setSyncBadge("live");
+            } catch (error) {
+              console.warn("Firebase write unavailable; saved locally instead.", error);
+              setSyncBadge("local");
+            }
+          }'''
+
+          path.write_text(text[:start] + replacement + text[end:])
+          PY
+      - name: Commit fallback
+        run: |
+          git config user.name "LoOoM8485"
+          git config user.email "elmu@hotmail.it"
+          git add src/App.jsx
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Add local fallback when Firebase unavailable"
+          git push origin main
