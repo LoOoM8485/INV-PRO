@@ -21,27 +21,30 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           BASE="https://triton-invitational-planner-elmu-2020.vercel.app"
-          for ATTEMPT in $(seq 1 12); do
+          for ATTEMPT in $(seq 1 24); do
             if curl -fsSL --max-time 20 "${BASE}/" -o /tmp/index.html; then
               JS=$(grep -oE 'src="/assets/[^"]+\.js"' /tmp/index.html | head -1 | cut -d'"' -f2 || true)
+              CSS=$(grep -oE 'href="/assets/[^"]+\.css"' /tmp/index.html | head -1 | cut -d'"' -f2 || true)
+              JS_OK=0
+              CSS_OK=0
+
               if [ -n "${JS}" ] && curl -fsSL --max-time 20 "${BASE}${JS}" -o /tmp/app.js; then
-                if grep -q "LOCAL MODE" /tmp/app.js; then
-                  echo "Production bundle contains Firebase fallback."
-                  exit 0
-                fi
+                grep -q "LOCAL MODE" /tmp/app.js && JS_OK=1 || true
+              fi
+
+              if [ -n "${CSS}" ] && curl -fsSL --max-time 20 "${BASE}${CSS}" -o /tmp/app.css; then
+                grep -q -- "--inv-fullscreen-release:20260904" /tmp/app.css && CSS_OK=1 || true
+              fi
+
+              if [ "${JS_OK}" = "1" ] && [ "${CSS_OK}" = "1" ]; then
+                echo "Production bundle contains Firebase fallback and fullscreen release."
+                exit 0
               fi
             fi
-            echo "Waiting for refreshed deployment (${ATTEMPT}/12)…"
+
+            echo "Waiting for refreshed deployment (${ATTEMPT}/24)…"
             sleep 5
           done
-          echo "Production bundle did not expose the expected fallback marker."
+
+          echo "Production bundle did not expose the expected release markers."
           exit 1
-      - name: Check Firebase planner access
-        if: github.ref == 'refs/heads/main'
-        run: |
-          CODE=$(curl -sS -o /tmp/firestore.json -w "%{http_code}" "https://firestore.googleapis.com/v1/projects/tableplanner123/databases/%28default%29/documents/planner/main?key=AIzaSyAGU-ZKIQEdk6M37Jt65S-tMydQsoaswh4")
-          echo "Firestore HTTP ${CODE}"
-          if [ "${CODE}" != "200" ]; then
-            echo "::warning::Firebase sync is unavailable; INV-PRO will use its local fallback mode."
-            cat /tmp/firestore.json
-          fi
