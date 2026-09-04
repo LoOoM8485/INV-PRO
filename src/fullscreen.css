@@ -1,3 +1,7 @@
+:root {
+  --inv-fullscreen-release: 20260904;
+}
+
 #root header > div:last-child {
   flex-wrap: wrap;
   justify-content: flex-end;
