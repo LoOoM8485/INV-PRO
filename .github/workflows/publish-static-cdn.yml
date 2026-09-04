@@ -1,0 +1,60 @@
+name: Publish static CDN build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Publish built app into docs
+        id: publish
+        shell: bash
+        run: |
+          rm -rf docs
+          cp -R dist docs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f docs
+          if git diff --cached --quiet; then
+            echo "No build changes to publish."
+          else
+            git commit -m "Publish optimized static app"
+            git push origin HEAD:main
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Verify public CDN app
+        shell: bash
+        run: |
+          SHA="${{ steps.publish.outputs.sha }}"
+          BASE="https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@${SHA}/docs"
+          for ATTEMPT in $(seq 1 12); do
+            if curl -fsSL --max-time 20 "$BASE/index.html" -o /tmp/index.html; then
+              JS=$(grep -oE '\./assets/[^" ]+\.js' /tmp/index.html | head -1 || true)
+              if [ -n "$JS" ] && curl -fsSL --max-time 20 "$BASE/${JS#./}" -o /tmp/app.js; then
+                if grep -q "LOCAL MODE" /tmp/app.js; then
+                  echo "Public optimized INV-PRO app verified: $BASE/index.html"
+                  exit 0
+                fi
+              fi
+            fi
+            echo "Waiting for CDN (${ATTEMPT}/12)..."
+            sleep 5
+          done
+          echo "CDN verification failed"
+          exit 1
