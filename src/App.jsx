@@ -2,11 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { db } from "./firebase";
 import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 
-const TABLES = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15];
+const TABLES = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18];
 const SEATS = [1, 2, 3, 5, 6, 7, 8, 9];
 
-const INV_IDS = Array.from({ length: 56 }, (_, i) => i * 2 + 1);
-const PRO_IDS = Array.from({ length: 56 }, (_, i) => i * 2 + 2);
+const INV_IDS = Array.from({ length: 60 }, (_, i) => i * 2 + 1);
+const PRO_IDS = Array.from({ length: 60 }, (_, i) => i * 2 + 2);
 
 const DOC_REF = doc(db, "planner", "main");
 
@@ -22,7 +22,8 @@ function createInitialState() {
   return {
     inv: INV_IDS.map((id) => emptyPlayer(id, "INV")),
     pro: PRO_IDS.map((id) => emptyPlayer(id, "PRO")),
-    visibleMaxTable: 15,
+    visibleMaxTable: 18,
+    capacityVersion: 2,
     lastBreakSnapshot: null,
     customBlocks: [
       { a: "", b: "" },
@@ -35,11 +36,28 @@ function createInitialState() {
 function mergeSavedState(data) {
   const base = createInitialState();
 
+  function mergePlayers(basePlayers, savedPlayers) {
+    const savedById = new Map(
+      (savedPlayers || []).map((player) => [Number(player.id), player])
+    );
+
+    return basePlayers.map((player) => ({
+      ...player,
+      ...(savedById.get(player.id) || {}),
+    }));
+  }
+
+  const isLegacyCapacity = Number(data?.capacityVersion || 1) < 2;
+
   return {
     ...base,
     ...data,
-    inv: data?.inv || base.inv,
-    pro: data?.pro || base.pro,
+    inv: mergePlayers(base.inv, data?.inv),
+    pro: mergePlayers(base.pro, data?.pro),
+    visibleMaxTable: isLegacyCapacity
+      ? base.visibleMaxTable
+      : data?.visibleMaxTable ?? base.visibleMaxTable,
+    capacityVersion: base.capacityVersion,
     customBlocks: data?.customBlocks || base.customBlocks,
   };
 }
